@@ -1,7 +1,7 @@
 {
   "name": "terminal-googlebook",
   "version": "0.1.0",
-  "description": "Computer use in a separate virtual Googlebook: screenshot, click, type, key and open_url tools plus a skill for driving the guest. Requires the terminal-googlebook CLI on PATH.",
+  "description": "Computer use in a separate virtual Googlebook: start, screenshot, click, type, key and open_url tools plus a skill for driving the guest. Requires the terminal-googlebook CLI on PATH.",
   "author": { "name": "Eduardo Aguirre", "url": "https://github.com/masteread" },
   "homepage": "https://github.com/masteread/terminal-googlebook",
   "repository": "https://github.com/masteread/terminal-googlebook",

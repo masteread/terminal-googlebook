@@ -9,9 +9,9 @@ description: Operate a separate virtual Googlebook (Googlebook OS, Android 17) w
 
 ## Prefer the MCP tools
 
-If tools named `screenshot`, `click`, `move`, `drag`, `scroll`, `type`, `key`, `home`, `back`, `recents`, `open_url` and `status` from the `terminal-googlebook` MCP server are available, use them in an observe → act → verify loop:
+If tools named `start`, `screenshot`, `click`, `move`, `drag`, `scroll`, `type`, `key`, `home`, `back`, `recents`, `open_url` and `status` from the `terminal-googlebook` MCP server are available, use them in an observe → act → verify loop:
 
-1. `status`: the VM is running, `bootCompleted` and `helperConnected` are `true`.
+1. `start`: turns on the VM, or does nothing if it is on. Tell the user the command it returns, so they can watch you live. If it says the VM is not set up, ask the user to run the command it gives: the first time downloads about 9 GB.
 2. If `userPicker` is `true`, take a `screenshot` and `click` **User**. There is no password.
 3. For any web task, start with `open_url`. It opens a new Chrome tab and saves many clicks.
 4. `screenshot`: every x/y you pass to other tools is a pixel in this image (top-left origin).

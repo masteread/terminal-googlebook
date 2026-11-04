@@ -11,11 +11,12 @@ import UniformTypeIdentifiers
 final class AgentServer {
     let store: Store
     let name: String
-    init(store: Store, name: String) { self.store = store; self.name = name }
+    let executable: URL, launcher: String
+    init(store: Store, name: String, executable: URL, launcher: String) { self.store = store; self.name = name; self.executable = executable; self.launcher = launcher }
 
     static let instructions = """
-    Controls a separate virtual Googlebook, not the user's own desktop. Call `status` first: if \
-    userPicker is true, take a screenshot and click User (there is no password). For any web task \
+    Controls a separate virtual Googlebook, not the user's own desktop. Call `start` first and tell \
+    the user the command it returns, so they can watch you live. If userPicker is true, take a screenshot and click User (there is no password). For any web task \
     start with `open_url`. Every x/y is a pixel in the latest screenshot (top-left origin). Take \
     another screenshot after actions to check the result. Never add a Google account to this VM.
     """
@@ -26,6 +27,8 @@ final class AgentServer {
     private static let point: [String: Any] = ["type": "integer", "minimum": 0]
     private static let after: [String: Any] = ["type": "boolean", "description": "Also return a screenshot taken shortly after the action."]
     static let tools: [[String: Any]] = [
+        ["name": "start", "description": "Turn on the virtual Googlebook and wait until it is ready, about a minute. Does nothing if it is already on. Returns the command the user can run to watch you live: tell them.",
+         "inputSchema": schema([:])],
         ["name": "screenshot", "description": "Capture the virtual Googlebook's screen. Returns the image and a local PNG path. Coordinates for other tools are pixels in this image.",
          "inputSchema": schema([:]), "annotations": ["readOnlyHint": true]],
         ["name": "click", "description": "Click at a point. clicks: 2 double-clicks.",
@@ -88,6 +91,7 @@ final class AgentServer {
         }
         var requests: [Request] = []
         switch tool {
+        case "start": return try await startMachine()
         case "screenshot": return try await screenshot()
         case "status":
             let reply = try await guest(Request(action: "status", timeout: 15))
@@ -123,6 +127,24 @@ final class AgentServer {
         return content
     }
 
+    private func startMachine() async throws -> [[String: Any]] {
+        // La primera vez son 9 GB de descarga: esa decisión es del usuario, no del agente.
+        guard Assets(store: store, executable: executable).isInstalled else {
+            throw Failure("The virtual Googlebook is not set up yet. Ask the user to run `\(launcher) up` in a terminal; the first time it downloads about 9 GB from Google.")
+        }
+        let process = Process()
+        process.executableURL = executable
+        process.arguments = ["up", name, "--no-view"]
+        let output = Pipe()
+        process.standardOutput = output; process.standardError = output; process.standardInput = FileHandle.nullDevice
+        try process.run()
+        let text = await Task.detached { String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self) }.value
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { throw Failure(text) }
+        let watch = name == "default" ? "\(launcher) view" : "\(launcher) view \(name)"
+        return [["type": "text", "text": "\(text)\nTell the user: to watch live, run this in Ghostty, Kitty or iTerm2: \(watch)"]]
+    }
+
     /// A point-sized screenshot, so image pixels are the coordinates the other tools take.
     /// JPEG keeps the message small; the model sees the same detail at this size.
     private func screenshot() async throws -> [[String: Any]] {
@@ -154,10 +176,10 @@ final class AgentServer {
     /// Checked per call, so the server starts (and lists its tools) before any VM exists.
     private func requireRunning() throws {
         guard (try? store.load(name)) != nil else {
-            throw Failure("No virtual Googlebook named '\(name)' exists yet. Ask the user to run `terminal-googlebook up\(name == "default" ? "" : " " + name)`; the first time it downloads about 9 GB from Google.")
+            throw Failure("No virtual Googlebook named '\(name)' exists yet. Call the `start` tool.")
         }
         let directory = try store.directory(name)
-        guard CLI.isRunning(directory) else { throw Failure("VM '\(name)' is stopped. Ask the user to run: terminal-googlebook start \(name)") }
+        guard CLI.isRunning(directory) else { throw Failure("VM '\(name)' is stopped. Call the `start` tool.") }
     }
     private func explain(_ error: Error) -> String { error.localizedDescription }
 

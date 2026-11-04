@@ -18,7 +18,7 @@ Instala en `~/.local` y no toca tu shell: si `~/.local/bin` no está en tu `PATH
 
 ```bash
 terminal-googlebook doctor                # comprueba esta Mac
-terminal-googlebook up                    # la primera vez descarga unos 9 GB de Google y UTM
+terminal-googlebook up                    # abre el viewer; la primera vez descarga unos 9 GB de Google y UTM
 terminal-googlebook action open_url https://example.com
 terminal-googlebook action screenshot --output /tmp/guest.png
 terminal-googlebook stop
@@ -37,6 +37,26 @@ dist/terminal-googlebook up
 ```
 
 `VERSION=x.y.z BUILD_NUMBER=N bash scripts/release.sh` arma el paquete del release en `dist/releases/`.
+
+## Darle su máquina a un agente y verlo en vivo
+
+Conecta tu agente una vez:
+
+```bash
+claude mcp add --scope user terminal-googlebook -- terminal-googlebook mcp
+terminal-googlebook skills install
+terminal-googlebook up --no-view   # solo la primera vez: descarga unos 9 GB
+```
+
+Después, en cualquier conversación nueva, pídele una tarea: el agente enciende su máquina con la tool `start`.
+
+Para mirarlo, abre otra pestaña en Ghostty, Kitty o iTerm2. Puedes hacerlo antes de darle la tarea, porque espera a que la VM encienda:
+
+```bash
+terminal-googlebook view
+```
+
+Ves la pantalla, el puntero del agente con un anillo en cada click, y su última acción en el pie. También puedes usar la VM tú mismo. `Ctrl+]` cierra el viewer y deja la VM encendida; `terminal-googlebook stop` la apaga.
 
 Para agentes: [docs/AGENT.md](docs/AGENT.md).
 

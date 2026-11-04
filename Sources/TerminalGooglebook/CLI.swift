@@ -57,8 +57,11 @@ final class CLI {
         case "action": try await action(tail)
         case "view":
             let name = try Arguments(tail).machineName()
-            _ = try store.load(name)
-            guard Self.isRunning(try store.directory(name)) else { throw Failure("VM '\(name)' is stopped. Start it with: terminal-googlebook start \(name)") }
+            guard TerminalViewer.supportsCurrentTerminal else { throw Failure("The viewer needs Ghostty, Kitty or iTerm2, outside tmux. Use the CLI or MCP tools from other terminals.") }
+            // Se puede abrir antes de que el agente encienda la VM. Ctrl+C sale.
+            let directory = try store.directory(name)
+            if !Self.isRunning(directory) { stderr("Waiting for VM '\(name)' to start. Tell your agent to start it, or run: terminal-googlebook start \(name == "default" ? "" : name)") }
+            while !Self.isRunning(directory) || (try? store.load(name)) == nil { try await Task.sleep(nanoseconds: 500_000_000) }
             try await view(name)
         case "mcp":
             let args = try Arguments(tail, flags: ["config"])
@@ -69,7 +72,7 @@ final class CLI {
                 let data = try JSONSerialization.data(withJSONObject: ["mcpServers": ["terminal-googlebook": server]], options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
                 print(String(decoding: data, as: UTF8.self)); return
             }
-            try await AgentServer(store: store, name: name).run()
+            try await AgentServer(store: store, name: name, executable: executableURL, launcher: launcherPath).run()
         case "skills":
             let args = try Arguments(tail, options: ["dir"])
             guard let skill = bundledSkill else { throw Failure("This build has no bundled skill. Reinstall terminal-googlebook.") }
@@ -307,7 +310,8 @@ final class CLI {
     up [NAME]                   Download if needed, create and boot a VM (default name: default)
       [--width 1280 --height 800 --memory 4 --cpus 4 --offline]   Fixed when the VM is created
       [--no-view | --detach]    Wait for Android without viewing, or return right away
-    view [NAME]                 Watch and use a running VM here (Ghostty, Kitty, iTerm2). Ctrl+] leaves it running
+    view [NAME]                 Watch an agent and use the VM here (Ghostty, Kitty, iTerm2). Waits if the VM is off.
+                                Ctrl+] leaves it running
     start [NAME] [--detach]     Boot an existing VM with no window on the host
     stop [NAME] [--force]       Shut Android down cleanly (or power off immediately)
     doctor                      Check that this Mac can run the VM, as JSON

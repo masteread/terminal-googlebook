@@ -48,6 +48,7 @@ final class TerminalViewer {
     private var previousChrome = ""
     private var fps = 0.0, fpsSample = (frames: 0, at: Date())
     private var firstFrameShown = false
+    private var agentStamp = timespec(), agentPoint: (x: Int, y: Int)?, ringUntil: Date?
 
     init(directory: URL, machine: Machine) throws {
         mailbox = try Mailbox(directory.appendingPathComponent("exchange"))
@@ -117,10 +118,34 @@ final class TerminalViewer {
             if transportDecided, !streaming, metrics.cellHeight != nil || Date().timeIntervalSince(started) > 0.4 { streaming = true; streamFrames() }
             if wheel.dx != 0 || wheel.dy != 0, Date().timeIntervalSince(wheel.at) >= 0.03 { flushWheel() }
             sendNextInput()
-            if Date().timeIntervalSince(lastChrome) >= 0.08 { lastChrome = Date(); drawChrome() }
+            if Date().timeIntervalSince(lastChrome) >= 0.08 { lastChrome = Date(); followAgent(); drawChrome() }
             // Sin input en curso duerme más: en reposo el viewer no debe gastar CPU.
             let active = inFlight || !queue.isEmpty || wheel.dx != 0 || wheel.dy != 0 || anchor != nil || Date().timeIntervalSince(lastInput) < 1
             try await Task.sleep(nanoseconds: active ? 4_000_000 : 30_000_000)
+        }
+    }
+
+    // MARK: Agent
+
+    /// Muestra lo que hace un agente: el puntero sobre la imagen y la acción en el pie.
+    private func followAgent() {
+        let url = directory.appendingPathComponent("activity")
+        var info = Darwin.stat()
+        guard lstat(url.path, &info) == 0 else { return }
+        let stamp = info.st_mtimespec
+        if stamp.tv_sec != agentStamp.tv_sec || stamp.tv_nsec != agentStamp.tv_nsec {
+            agentStamp = stamp
+            if let data = try? Data(contentsOf: url), let action = try? JSONDecoder().decode(AgentActivity.self, from: data) {
+                let at = Date(timeIntervalSince1970: Double(stamp.tv_sec) + Double(stamp.tv_nsec) / 1e9)
+                activity.append(Activity(at: at, text: "agent · " + action.text, ok: true, milliseconds: nil))
+                if activity.count > 8 { activity.removeFirst() }
+                if let x = action.x, let y = action.y { agentPoint = (x, y) }
+                ringUntil = action.click ? at.addingTimeInterval(0.6) : nil
+            }
+        }
+        if let until = ringUntil, Date() >= until { ringUntil = nil }
+        if let point = agentPoint {
+            renderer.setPointer(DesktopPointer(x: Double(point.x) / Double(points.width), y: Double(point.y) / Double(points.height), ring: ringUntil != nil))
         }
     }
 
@@ -320,12 +345,12 @@ final class TerminalViewer {
         if action == "type", let last = queue.last, last.action == "type", let previous = last.arguments["text"],
            previous.utf8.count + (arguments["text"]?.utf8.count ?? 0) < 32768 {
             let text = previous + (arguments["text"] ?? "")
-            let merged = Request(action: "type", arguments: ["text": text], timeout: 5)
+            let merged = Request(action: "type", arguments: ["text": text, "source": "viewer"], timeout: 5)
             labels[last.id] = nil; labels[merged.id] = Self.typeLabel(text)
             queue[queue.count - 1] = merged; return
         }
         guard queue.count < 64 else { record("Input is busy; wait a moment", ok: false); return }
-        let request = Request(action: action, arguments: arguments, timeout: 5)
+        let request = Request(action: action, arguments: arguments.merging(["source": "viewer"]) { current, _ in current }, timeout: 5)
         labels[request.id] = label
         queue.append(request)
     }

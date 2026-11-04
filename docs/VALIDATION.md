@@ -39,11 +39,11 @@ Después, `up` se usó en iTerm2 real y funciona muy bien. El encabezado marcó 
 - Con la paleta y los gestos desde el viewer, por secuencias de terminal reales: click (selector de usuario), doble click (abre Settings), rueda, arrastre (mueve una ventana), texto, `Ctrl+G` con launcher y Home, `Ctrl+]` deja la VM encendida. Ver `evidencia/fase-2-input-viewer.jpg`.
 - Por CLI, comprobado en capturas: `scroll` en ambos sentidos, `drag`, `back`, `recents`, `home`, `move` (aparece el tooltip del dock), `key meta` (launcher), `key alt+tab` (cambia de ventana; necesita Alt pulsada 400 ms), `ctrl+a/c/v`.
 - `stop` con el viewer abierto: el viewer sale y restaura la terminal.
-- El puntero no aparece en los frames: el guest no lo dibuja en el scanout en modo inyección. En el viewer se usa el del terminal; las capturas para agentes no lo muestran.
+- El puntero no aparece en los frames: el guest no lo dibuja en el scanout en modo inyección. Las capturas para agentes no lo muestran. El viewer dibuja el del agente desde la Fase 3.
 
 ## Fase 3: distribución
 
-Paquete `v0.1.0-3`, de 47 MB, con firma ad-hoc.
+Paquete con firma ad-hoc, de 47 MB. Pruebas con `v0.1.0-3`.
 
 - **Instalación limpia:** `get.sh`, `doctor` y `up --no-view` en un directorio de datos vacío. `lsof` muestra que QEMU no carga nada de Homebrew ni del árbol de compilación. La descarga de Google se cortó dos veces (`curl` 18 y 56); ahora reintenta y reanuda sola, y la segunda vez continuó desde el byte donde iba.
 - **`doctor`:** antes de la descarga da `healthy: true` con `vm-files` en `pending`. Después carga QEMU de verdad: `QEMU emulator version 10.0.12`.
@@ -51,8 +51,13 @@ Paquete `v0.1.0-3`, de 47 MB, con firma ad-hoc.
 - **Host durante esa tarea:** el hash del clipboard no cambió y la VM no abrió ventanas. La app al frente y el puntero no se pudieron usar como prueba: la Mac estaba en uso.
 - **Input perdido:** en esa tarea, `type` justo después de abrir la búsqueda de Settings dejó `d ver` en vez de `Android version`. El agente lo vio en el screenshot y reintentó. La skill ya avisa de que las teclas enviadas demasiado pronto pueden perderse; no está corregido.
 
+### Ver en vivo
+
+Con un cliente MCP real y el viewer en una pty de iTerm2: `view` espera con la VM apagada, `start` la enciende en 39 s y responde el comando para mirar, y un segundo `start` tarda 0.1 s. El click del agente aparece en el frame, con puntero y anillo en la posición correcta, y `agent · click 640,400` en el pie. `activity` guarda `type 10 characters`, nunca el texto. Falta verlo en iTerm2 real.
+
 ### Desviaciones del PRD
 
+- **Tool `start` y puntero del agente:** el PRD no los pide. Se agregaron, para que un agente encienda su máquina y un dev lo vea en vivo. La tool no descarga: la primera vez pide al usuario correr `up`.
 - **Release sin identidad:** el PRD pide un release firmado. Se usa firma ad-hoc y el SHA-256 de `get.sh`. Sin notarizar, macOS rechaza el zip bajado con el navegador; por eso se instala con `curl`. No se ha comprobado en una Mac que nunca lo haya visto.
 - **Licencias:** el paquete incluye binarios GPL y LGPL, no solo MIT y Apache-2.0. Ver `THIRD_PARTY.md`. Sus fuentes se adjuntan al release. Es una revisión técnica, no legal: conviene una revisión legal antes de hacerlo público.
 

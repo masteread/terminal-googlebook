@@ -20,6 +20,14 @@ enum DesktopFrame {
     case pixels(Data, width: Int, height: Int, bytesPerRow: Int)
 }
 
+/// La última acción de un agente, dibujada sobre el desktop: el guest no pinta su puntero en los frames.
+struct DesktopPointer: Equatable {
+    /// Posición de 0 a 1 dentro de la imagen.
+    let x: Double, y: Double
+    /// Un anillo alrededor de la punta, para que un click se vea.
+    let ring: Bool
+}
+
 /// Where the desktop sits: a canvas covering whole cells, with the image drawn from its top-left
 /// at exactly `imageWidth`×`imageHeight` device pixels so the terminal never resamples it.
 struct DesktopPlacement: Equatable {
@@ -40,6 +48,7 @@ final class DesktopRenderer: @unchecked Sendable {
     private let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
     private var pending: DesktopFrame?, force = false, busy = false, held = false
     private var placement: DesktopPlacement?
+    private var pointer: DesktopPointer?
     private var transport: DesktopTransport
     private var stats = Stats()
     // Only touched on `queue`.
@@ -52,6 +61,10 @@ final class DesktopRenderer: @unchecked Sendable {
     var currentTransport: DesktopTransport { lock.withLock { transport } }
     func configure(placement: DesktopPlacement?, transport: DesktopTransport? = nil) {
         lock.withLock { self.placement = placement; if let transport { self.transport = transport } }
+    }
+    func setPointer(_ value: DesktopPointer?) {
+        guard lock.withLock({ () -> Bool in let changed = pointer != value; pointer = value; return changed }) else { return }
+        redraw()
     }
     /// While held, frames are kept but not drawn. iTerm2 images cover text, so overlays hold it.
     func hold(_ value: Bool) {
@@ -128,6 +141,27 @@ final class DesktopRenderer: @unchecked Sendable {
         let radius = min(Double(p.imageWidth), Double(p.imageHeight)) * 0.012
         context.addPath(CGPath(roundedRect: target, cornerWidth: radius, cornerHeight: radius, transform: nil)); context.clip()
         context.draw(image, in: target)
+        if let pointer = lock.withLock({ self.pointer }) { draw(pointer, in: target, context: context) }
+    }
+
+    private func draw(_ pointer: DesktopPointer, in target: CGRect, context: CGContext) {
+        // Unas 22 unidades de alto a 800 px de guest; la imagen tiene el origen abajo.
+        let unit = target.height / 800 * 1.3
+        let tip = CGPoint(x: target.minX + pointer.x * target.width, y: target.maxY - pointer.y * target.height)
+        if pointer.ring {
+            context.setStrokeColor(CGColor(srgbRed: 1, green: 0.42, blue: 0.1, alpha: 0.95))
+            context.setLineWidth(3 * unit)
+            context.strokeEllipse(in: CGRect(x: tip.x - 16 * unit, y: tip.y - 16 * unit, width: 32 * unit, height: 32 * unit))
+        }
+        let arrow: [(Double, Double)] = [(0, 0), (0, 17), (4, 13), (7, 19.5), (10, 18), (7, 12), (12.5, 12)]
+        let path = CGMutablePath()
+        path.addLines(between: arrow.map { CGPoint(x: tip.x + $0.0 * unit, y: tip.y - $0.1 * unit) })
+        path.closeSubpath()
+        context.addPath(path)
+        context.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
+        context.setStrokeColor(CGColor(srgbRed: 0, green: 0, blue: 0, alpha: 1))
+        context.setLineWidth(1.5 * unit)
+        context.drawPath(using: .fillStroke)
     }
 
     private func encode(_ image: CGImage, placement: DesktopPlacement, transport: DesktopTransport) -> String? {

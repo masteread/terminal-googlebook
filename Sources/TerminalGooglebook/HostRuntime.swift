@@ -2,6 +2,14 @@ import Foundation
 import Darwin
 import TerminalGooglebookCore
 
+/// La última acción de un agente, para que quien mira el viewer la vea. Sin el texto que escribe:
+/// este archivo no debe guardar contraseñas.
+struct AgentActivity: Codable {
+    let text: String
+    let x: Int?, y: Int?
+    let click: Bool
+}
+
 /// Dónde están los binarios de la VM. En desarrollo, el `vm/` del repositorio.
 struct Assets {
     let work: URL
@@ -186,7 +194,7 @@ final class HostRuntime {
         self.machine = machine; self.directory = directory; self.assets = assets
         lock = try FileLock(directory.appendingPathComponent("runtime.lock"))
         let tokenURL = directory.appendingPathComponent("token")
-        for stale in ["token", "qmp.sock", "spice.sock", "frame.sock", "serial.sock", "serial.log", "result.json"] {
+        for stale in ["token", "qmp.sock", "spice.sock", "frame.sock", "activity", "serial.sock", "serial.log", "result.json"] {
             try? FileManager.default.removeItem(at: directory.appendingPathComponent(stale))
         }
         helper = try PointerHelper(token: { (try? String(contentsOf: tokenURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) })
@@ -454,7 +462,27 @@ final class HostRuntime {
             return ["name": machine.name, "state": "stopping"]
         default: throw Failure("Unknown action: \(request.action)")
         }
+        if a["source"] != "viewer" { publish(request) }
         return ["ok": "true"]
+    }
+
+    private func publish(_ request: Request) {
+        let a = request.arguments
+        func point(_ x: String, _ y: String) -> (Int, Int)? { a[x].flatMap { Int($0) }.flatMap { px in a[y].flatMap { Int($0) }.map { (px, $0) } } }
+        let at: (Int, Int)?, text: String
+        switch request.action {
+        case "click": at = point("x", "y"); text = "\(a["button"] == "right" ? "right-click" : a["count"].flatMap { Int($0) }.map { $0 > 1 } == true ? "double-click" : "click") \(at?.0 ?? 0),\(at?.1 ?? 0)"
+        case "move": at = point("x", "y"); text = "move \(at?.0 ?? 0),\(at?.1 ?? 0)"
+        case "drag": at = point("toX", "toY"); text = "drag to \(at?.0 ?? 0),\(at?.1 ?? 0)"
+        case "scroll": at = point("x", "y"); text = "scroll at \(at?.0 ?? 0),\(at?.1 ?? 0)"
+        case "type": at = nil; text = "type \(a["text"]?.count ?? 0) characters"
+        case "key": at = nil; text = "key \(a["key"] ?? "")"
+        case "open_url": at = nil; text = "open \(a["url"] ?? "")"
+        default: at = nil; text = request.action
+        }
+        let entry = AgentActivity(text: text, x: at?.0, y: at?.1, click: request.action == "click")
+        guard let data = try? JSONEncoder().encode(entry) else { return }
+        try? data.write(to: directory.appendingPathComponent("activity"), options: .atomic)
     }
 
     private func stop(force: Bool) {
