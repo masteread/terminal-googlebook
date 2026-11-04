@@ -169,9 +169,9 @@ final class CLI {
                 check("qemu", qemu.terminationStatus == 0, text.split(separator: "\n").first.map(String.init) ?? "exit \(qemu.terminationStatus)")
             } catch { check("qemu", false, error.localizedDescription) }
         } else {
-            let values = try? store.root.deletingLastPathComponent().resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
-            let free = Int((values?.volumeAvailableCapacityForImportantUsage ?? 0) / (1 << 30))
-            check("disk", free >= 60, "\(free) GB free; the first `up` needs 60 GB")
+            let values = try? store.root.deletingLastPathComponent().resourceValues(forKeys: [.volumeAvailableCapacityKey])
+            let free = (values?.volumeAvailableCapacity ?? 0) / (1 << 30)
+            check("disk", free >= 60, free >= 60 ? "\(free) GB free; the first `up` needs 60 GB" : "\(free) GB free; setup needs 60 GB. Free up \(60 - free) GB: System Settings > General > Storage")
             checks.append(["name": "vm-files", "status": "pending", "detail": "`terminal-googlebook setup` downloads them: about 9 GB, usually 30 to 60 minutes"])
         }
         let healthy = !checks.contains { $0["status"] == "fail" }
