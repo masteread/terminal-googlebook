@@ -55,6 +55,8 @@ Paquete con firma ad-hoc, de 47 MB. Pruebas con `v0.1.0-3`.
 
 Con un cliente MCP real y el viewer en una pty de iTerm2: `view` espera con la VM apagada, `start` la enciende en 39 s y responde el comando para mirar, y un segundo `start` tarda 0.1 s. El click del agente aparece en el frame, con puntero y anillo en la posición correcta, y `agent · click 640,400` en el pie. `activity` guarda `type 10 characters`, nunca el texto. Falta verlo en iTerm2 real.
 
+**Problema abierto:** la ventana de Chrome desapareció de la pantalla en 2 de las 3 corridas de agente, una al maximizar y otra tras cargar la página, con Chrome aún activo en el dock. En la primera volvió al pulsar su icono. Causa sin investigar.
+
 ### Desviaciones del PRD
 
 - **Tool `start` y puntero del agente:** el PRD no los pide. Se agregaron, para que un agente encienda su máquina y un dev lo vea en vivo. La tool no descarga: la primera vez pide al usuario correr `up`.
