@@ -4,9 +4,9 @@ Resultados reales. Una sola Mac hasta ahora: M5, 16 GB, macOS 27.0.1. El criteri
 
 | Criterio | Estado | Evidencia |
 | --- | --- | --- |
-| 1. `curl \| bash` en un Mac limpio | Pendiente (Fase 3) | Solo existe la prueba parcial del spike 0.3 |
-| 2. Escritorio en la terminal en menos de 3 min | **Parcial** | Arranque de unos 40 s y frames decodificados en una pty que se hace pasar por iTerm2 y kitty. Se probó en iTerm2 real y funciona muy bien; no se cronometró el tiempo hasta ver el escritorio. Falta verlo en Ghostty y Kitty de verdad |
-| 3. Claude Code solo con el plugin, sin intervención | **Pasó**, en una Mac no limpia | `claude -p --plugin-dir` con solo las tools del plugin, sobre un Chrome nunca abierto: 44 s, 15 turnos, 0.67 USD. Pasó solo los diálogos de Chrome y llegó al artículo. Ver `evidencia/fase-1-agente.jpg` |
+| 1. `curl \| bash` en un Mac limpio | **Parcial** | Instalado con `get.sh` en un directorio vacío, con `env -i` y sin Homebrew ni SDK en el `PATH`, descarga real incluida. Misma Mac, con Xcode en disco. El zip se sirvió desde un servidor local: la URL pública de GitHub no se puede probar con el repo privado |
+| 2. Escritorio en la terminal en menos de 3 min | **Parcial** | Arranque de unos 40 s y frames decodificados en una pty que se hace pasar por iTerm2 y kitty. Se probó en iTerm2 real y funciona muy bien. `up` sobre la instalación limpia, con la imagen ya armada: 49 s hasta Android listo. Falta verlo en Ghostty y Kitty de verdad |
+| 3. Claude Code solo con el plugin, sin intervención | **Pasó**, en una Mac no limpia | `claude -p --plugin-dir` con solo las tools del plugin, sobre un Chrome nunca abierto: 44 s, 15 turnos, 0.67 USD. Pasó solo los diálogos de Chrome y llegó al artículo. Ver `evidencia/fase-1-agente.jpg`. Repetido en la Fase 3 con una tarea más larga (ver abajo) |
 | 4. Host intacto | **Parcial** | 0 ventanas de la VM en el host y el hash del clipboard no cambió. El puntero del host no se pudo medir: la Mac estaba en uso durante la prueba. El código no llama a ninguna API de input o pantalla del host |
 | 5. `stop` limpio y `start` recupera el estado | **Pasó** | Apagado en 4 s con código 0; las pestañas de Chrome siguen tras `start` |
 | 6. MIT, público, dos Macs | Pendiente | Privado; sin segunda Mac |
@@ -41,11 +41,31 @@ Después, `up` se usó en iTerm2 real y funciona muy bien. El encabezado marcó 
 - `stop` con el viewer abierto: el viewer sale y restaura la terminal.
 - El puntero no aparece en los frames: el guest no lo dibuja en el scanout en modo inyección. En el viewer se usa el del terminal; las capturas para agentes no lo muestran.
 
+## Fase 3: distribución
+
+Paquete `v0.1.0-3`, de 47 MB, con firma ad-hoc.
+
+- **Instalación limpia:** `get.sh`, `doctor` y `up --no-view` en un directorio de datos vacío. `lsof` muestra que QEMU no carga nada de Homebrew ni del árbol de compilación. La descarga de Google se cortó dos veces (`curl` 18 y 56); ahora reintenta y reanuda sola, y la segunda vez continuó desde el byte donde iba.
+- **`doctor`:** antes de la descarga da `healthy: true` con `vm-files` en `pending`. Después carga QEMU de verdad: `QEMU emulator version 10.0.12`.
+- **Agente en su propia máquina:** sobre esa VM recién instalada, Claude Code (Sonnet) hizo sin ayuda una tarea de cuatro pasos: Wikipedia, otra pestaña, versión de Android en Settings y volver a Chrome. 57 s, 31 turnos, 1.21 USD. Pasó solo los diálogos de Chrome sin añadir cuentas, y los datos son correctos. Ver `evidencia/fase-3-agente.jpg`.
+- **Host durante esa tarea:** el hash del clipboard no cambió y la VM no abrió ventanas. La app al frente y el puntero no se pudieron usar como prueba: la Mac estaba en uso.
+- **Input perdido:** en esa tarea, `type` justo después de abrir la búsqueda de Settings dejó `d ver` en vez de `Android version`. El agente lo vio en el screenshot y reintentó. La skill ya avisa de que las teclas enviadas demasiado pronto pueden perderse; no está corregido.
+
+### Desviaciones del PRD
+
+- **Release sin identidad:** el PRD pide un release firmado. Se usa firma ad-hoc y el SHA-256 de `get.sh`. Sin notarizar, macOS rechaza el zip bajado con el navegador; por eso se instala con `curl`. No se ha comprobado en una Mac que nunca lo haya visto.
+- **Licencias:** el paquete incluye binarios GPL y LGPL, no solo MIT y Apache-2.0. Ver `THIRD_PARTY.md`. Sus fuentes se adjuntan al release. Es una revisión técnica, no legal: conviene una revisión legal antes de hacerlo público.
+
+### Actualizaciones
+
+`up` no actualiza `work/host` si ya existe: una versión futura con otros binarios de host tendrá que resolverlo.
+
 ## Sin probar
 
 - El viewer en Ghostty y Kitty reales.
 - Las acciones de paleta Back, Recents, Switch window, Copy y Paste desde el viewer; sí pasaron por CLI con los mismos comandos.
 
-- Sesión de 8 horas.
+- Sesión de 8 horas: en curso.
+- Una Mac sin Xcode ni herramientas de línea de comandos.
+- `curl | bash` contra la URL pública de GitHub.
 - `--width`, `--height`, `--memory` y `--cpus` distintos de los valores por defecto.
-- `up` cuando falta la imagen: en esta Mac la imagen ya estaba, así que la descarga automática no se ha ejercitado.

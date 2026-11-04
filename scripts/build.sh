@@ -38,7 +38,7 @@ plist="$app/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c 'Add :CFBundlePackageType string APPL' "$plist"
 /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $version" "$plist"
 /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $build_number" "$plist"
-/usr/libexec/PlistBuddy -c 'Add :LSMinimumSystemVersion string 14.0' "$plist"
+/usr/libexec/PlistBuddy -c 'Add :LSMinimumSystemVersion string 26.0' "$plist"
 # The agent skill ships inside the app so `terminal-googlebook skills get` always matches this build.
 rm -rf "$app/Contents/Resources/skills"
 mkdir -p "$app/Contents/Resources/skills"

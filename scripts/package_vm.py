@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Spike 0.3: arma el paquete precompilado.  package.py WORK PYTHON_DIR SALIDA
+"""Arma el paquete precompilado del release.  package_vm.py WORK PYTHON_DIR SALIDA
 Copia binarios de host y guest, y las herramientas de imagen de Homebrew con sus dylibs reubicadas.
 PYTHON_DIR es un Python autónomo (python-build-standalone), porque un Mac sin Xcode no tiene python3."""
 import shutil, subprocess, sys
@@ -14,6 +14,8 @@ for d in ('bin', 'sbin', 'lib'): (tools / d).mkdir(parents=True)
 (out / 'host').mkdir()
 for name in ('qemu-interop', 'qemu-aarch64-softmmu', 'libvirglrenderer.1.dylib', 'virgl_render_server', 'headless'):
     shutil.copy2(work / 'host' / name, out / 'host' / name, follow_symlinks=True)
+# Quita la ruta de compilación; queda la relativa a work/host.
+subprocess.run(['install_name_tool', '-delete_rpath', str(work / 'UTM-beta/UTM.app/Contents/Frameworks'), str(out / 'host/headless')], check=True)
 shutil.copytree(work / 'guest', out / 'guest', symlinks=True)
 shutil.copytree(work / 'tools', out / 'tools', symlinks=True, dirs_exist_ok=True, ignore=shutil.ignore_patterns('bison'))
 shutil.copytree(py, out / 'python', symlinks=True)

@@ -7,6 +7,8 @@ struct Assets {
     let work: URL
     let vmSources: URL?
     let python: URL
+    /// Los binarios precompilados del release; nil al compilar desde el repositorio.
+    let bundle: URL?
 
     init(store: Store, executable: URL) {
         let environment = ProcessInfo.processInfo.environment
@@ -21,7 +23,8 @@ struct Assets {
         if let override = environment["TERMINAL_GOOGLEBOOK_WORK"] { work = URL(fileURLWithPath: override) }
         else if let sources, FileManager.default.fileExists(atPath: sources.appendingPathComponent("work/host/qemu-interop").path) { work = sources.appendingPathComponent("work") }
         else { work = store.root.appendingPathComponent("work") }
-        let bundled = store.root.appendingPathComponent("python/bin/python3")
+        bundle = sources.map { $0.deletingLastPathComponent().appendingPathComponent("bundle") }.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
+        let bundled = (bundle ?? store.root).appendingPathComponent("python/bin/python3")
         python = URL(fileURLWithPath: environment["TERMINAL_GOOGLEBOOK_PYTHON"] ?? (FileManager.default.fileExists(atPath: bundled.path) ? bundled.path : "/usr/bin/python3"))
     }
     var baseImage: URL { work.appendingPathComponent("image") }

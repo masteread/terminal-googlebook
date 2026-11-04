@@ -17,6 +17,9 @@ final class CLI {
         case "help", "--help", "-h": print(Self.help)
         case "--version", "version": print("terminal-googlebook \(appVersion)")
         case "up": try await up(tail)
+        case "doctor":
+            _ = try Arguments(tail)
+            try doctor()
         case "start":
             let args = try Arguments(tail, flags: ["detach"], options: ["timeout"])
             let name = try args.machineName()
@@ -122,6 +125,49 @@ final class CLI {
         stderr(Self.isRunning(directory) ? "VM '\(name)' is still running. Stop it with: terminal-googlebook stop \(name == "default" ? "" : name)" : "VM '\(name)' stopped.")
     }
 
+    /// Comprueba lo que `up` necesita. Antes de la primera descarga, lo que aún no existe queda "pending", no "fail".
+    private func doctor() throws {
+        var checks: [[String: String]] = []
+        func check(_ name: String, _ passed: Bool, _ detail: String) { checks.append(["name": name, "status": passed ? "pass" : "fail", "detail": detail]) }
+        let os = ProcessInfo.processInfo.operatingSystemVersion
+        check("macos", os.majorVersion >= 26, "macOS \(os.majorVersion).\(os.minorVersion); needs 26 or later")
+        let memory = Int(ProcessInfo.processInfo.physicalMemory / (1 << 30))
+        check("memory", memory >= 16, "\(memory) GB; needs 16 GB")
+        var hypervisor: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        check("hypervisor", sysctlbyname("kern.hv_support", &hypervisor, &size, nil, 0) == 0 && hypervisor == 1, "Hypervisor.framework")
+        checks.append(["name": "terminal", "status": TerminalViewer.supportsCurrentTerminal ? "pass" : "pending",
+                       "detail": TerminalViewer.supportsCurrentTerminal ? "The viewer works here" : "No viewer here (it needs Ghostty, Kitty or iTerm2); CLI and MCP still work"])
+        if assets.isInstalled {
+            check("vm-files", true, assets.work.path)
+            // Cargar QEMU de verdad detecta binarios que no corren en esta versión de macOS.
+            let qemu = Process()
+            qemu.executableURL = assets.work.appendingPathComponent("host/qemu-interop")
+            qemu.arguments = ["-version"]
+            var environment = ProcessInfo.processInfo.environment
+            environment["VM_QEMU_LIBRARY"] = assets.work.appendingPathComponent("host/qemu-aarch64-softmmu").path
+            environment["DYLD_FRAMEWORK_PATH"] = assets.work.appendingPathComponent("UTM-beta/UTM.app/Contents/Frameworks").path
+            qemu.environment = environment
+            let output = Pipe()
+            qemu.standardOutput = output; qemu.standardError = output
+            do {
+                try qemu.run()
+                let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                qemu.waitUntilExit()
+                check("qemu", qemu.terminationStatus == 0, text.split(separator: "\n").first.map(String.init) ?? "exit \(qemu.terminationStatus)")
+            } catch { check("qemu", false, error.localizedDescription) }
+        } else {
+            let values = try? store.root.deletingLastPathComponent().resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+            let free = Int((values?.volumeAvailableCapacityForImportantUsage ?? 0) / (1 << 30))
+            check("disk", free >= 60, "\(free) GB free; the first `up` needs 60 GB")
+            checks.append(["name": "vm-files", "status": "pending", "detail": "`terminal-googlebook up` downloads them, about 9 GB"])
+        }
+        let healthy = !checks.contains { $0["status"] == "fail" }
+        let data = try JSONSerialization.data(withJSONObject: ["healthy": healthy, "version": appVersion, "checks": checks], options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+        print(String(decoding: data, as: UTF8.self))
+        if !healthy { throw Failure("terminal-googlebook doctor found a problem; see the checks above.") }
+    }
+
     /// Descarga la imagen de Google y arma el disco en esta máquina; nada de eso se redistribuye.
     private func install() throws {
         guard let sources = assets.vmSources else { throw Failure("This build has no VM installer. Reinstall terminal-googlebook.") }
@@ -130,6 +176,11 @@ final class CLI {
         process.executableURL = sources.appendingPathComponent("install.sh")
         var environment = ProcessInfo.processInfo.environment
         environment["GOOGLEBOOK_WORK"] = assets.work.path
+        if let bundle = assets.bundle {
+            environment["GBOS_BUNDLE"] = bundle.path
+            let tools = ["python/bin", "tools/bin", "tools/sbin"].map { bundle.appendingPathComponent($0).path }
+            environment["PATH"] = (tools + [environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"]).joined(separator: ":")
+        }
         process.environment = environment
         process.standardOutput = FileHandle.standardError
         try FileManager.default.createDirectory(at: assets.work, withIntermediateDirectories: true)
@@ -259,6 +310,7 @@ final class CLI {
     view [NAME]                 Watch and use a running VM here (Ghostty, Kitty, iTerm2). Ctrl+] leaves it running
     start [NAME] [--detach]     Boot an existing VM with no window on the host
     stop [NAME] [--force]       Shut Android down cleanly (or power off immediately)
+    doctor                      Check that this Mac can run the VM, as JSON
     status [NAME]               VM, pointer helper and user picker, as JSON
     ls                          List VMs as JSON
 

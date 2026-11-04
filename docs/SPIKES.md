@@ -25,7 +25,7 @@ Se probó en esta misma Mac: `scripts/package_vm.py` arma el paquete y `vm/insta
 
 Sin probar, porque requiere otra máquina: otro chip u otra versión de macOS, un Mac que nunca tuvo Xcode, y un `/usr/bin` sin las herramientas de línea de comandos. `/opt/homebrew` seguía en disco; se comprobó con `otool` y `lsof` que no se usa.
 
-El paquete incluye un Python autónomo (python-build-standalone) porque los scripts de imagen lo necesitan y un Mac sin Xcode no trae `python3`. Su licencia y la de las herramientas incluidas (erofs-utils y e2fsprogs tienen partes GPL) hay que revisarlas antes de publicar un release; el PRD solo contempla MIT y Apache-2.0.
+El paquete incluye un Python autónomo (python-build-standalone) porque los scripts de imagen lo necesitan y un Mac sin Xcode no trae `python3`. Sus licencias quedaron en `THIRD_PARTY.md`.
 
 ## Bloqueos
 

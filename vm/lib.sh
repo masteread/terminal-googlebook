@@ -71,7 +71,7 @@ UTM_DMG_SHA256="6a722486a660e0ab2cf5826bbeaee0f5963999029366709f5a3048d73b1d7cb1
 DOWNLOADS="${GOOGLEBOOK_DOWNLOADS:-$WORK/downloads}"
 # Resumable download of a large file, then checksum verification.
 fetch_big() { # url dest sha256
-  if [ ! -f "$2" ]; then mkdir -p "$(dirname "$2")"; curl -fL --retry 5 -C - -o "$2.part" "$1"; mv "$2.part" "$2"; fi
+  if [ ! -f "$2" ]; then mkdir -p "$(dirname "$2")"; curl -fL --retry 20 --retry-delay 5 --retry-all-errors -C - -o "$2.part" "$1"; mv "$2.part" "$2"; fi
   echo "verifying $(basename "$2")"
   [ "$(shasum -a 256 "$2" | cut -d' ' -f1)" = "$3" ] || die "checksum mismatch for $2"
 }
