@@ -24,7 +24,7 @@ Resultados reales. Una sola Mac hasta ahora: M5, 16 GB, macOS 27.0.1. El criteri
 
 Medido con un guest real. El viewer corrió en una pty de prueba, no en una terminal real: los fps son lo que el viewer entrega a la pty, no lo que dibuja iTerm2 o Kitty.
 
-Después, `up` se usó en iTerm2 real y funciona muy bien. No quedó registrada la cifra de fps del encabezado.
+Después, `up` se usó en iTerm2 real y funciona muy bien. El encabezado marcó un promedio de 15 a 20 fps: **por debajo de los 20 del PRD** en esta ruta, aunque en el uso se sintió bien. Dato leído a ojo, no medido con un guion.
 
 | Medida | Resultado | PRD |
 | --- | --- | --- |
@@ -44,7 +44,6 @@ Después, `up` se usó en iTerm2 real y funciona muy bien. No quedó registrada 
 ## Sin probar
 
 - El viewer en Ghostty y Kitty reales.
-- La cifra de fps en iTerm2 real.
 - Las acciones de paleta Back, Recents, Switch window, Copy y Paste desde el viewer; sí pasaron por CLI con los mismos comandos.
 
 - Sesión de 8 horas.
