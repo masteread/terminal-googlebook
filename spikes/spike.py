@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Spikes 0.1 y 0.2 del PRD: VM sin ventana, captura e input por QMP y helper de puntero.
+"""Spikes 0.1 y 0.2 del PRD: VM sin ventana, frames por SPICE (headless.m), teclado por QMP y helper de puntero.
 
   spike.py boot WORK [WxH]         arranca headless, espera el boot e imprime RUN_DIR
   spike.py do RUN_DIR PASO...      ejecuta pasos en orden:
-      shot:ARCHIVO.png             QMP screendump
-      watch:SEGUNDOS:CARPETA       un PNG por segundo; informa tamaño y si los frames cambian
+      shot:ARCHIVO.png             copia el último frame del cliente headless (uno por segundo)
       key:ctrl-t                   teclas QMP simultáneas (qcodes separados por -)
       type:TEXTO                   texto ASCII por QMP
       click:X:Y                    click con el pointer helper
@@ -12,7 +11,7 @@
       poweroff                     apaga Android por el canal de control
 Solo biblioteca estándar. Sin ADB. WORK es la carpeta de build de gbos-vm (vm/work).
 """
-import datetime, hashlib, json, os, socket, subprocess, sys, time
+import datetime, json, os, shutil, socket, subprocess, sys, time
 from pathlib import Path
 
 RUN = Path(__file__).resolve().parent.parent / 'vm/run'
@@ -94,6 +93,15 @@ def boot(work, display='1280x800'):
     t0 = time.monotonic()
     vm = subprocess.Popen([sys.executable, str(RUN / 'run_vm.py'), str(work), name, '--seconds', '86400', '--display', display,
                            '--no-audio', '--no-bluetooth'], stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    # El cliente se conecta desde el arranque y no se reconecta: ver docs/SPIKES.md.
+    sock = run_dir / 'spice.sock'
+    while not sock.exists():
+        if vm.poll() is not None or time.monotonic() - t0 > 30: sys.exit(f'la VM no arrancó; revisa {run_dir}')
+        time.sleep(.1)
+    fw = work / 'UTM-beta/UTM.app/Contents/Frameworks'
+    subprocess.Popen([str(work / 'host/headless'), str(sock), str(run_dir / 'frames'), '3600'],
+                     env=dict(os.environ, DYLD_FRAMEWORK_PATH=str(fw), VM_MOUSE_SEAMLESS='0'), stdout=(run_dir / 'headless.log').open('wb'),
+                     stderr=subprocess.STDOUT, start_new_session=True)
     serial = run_dir / 'serial.log'
     while time.monotonic() - t0 < 300:
         if vm.poll() is not None: sys.exit(f'la VM terminó con código {vm.returncode}; revisa {run_dir}')
@@ -106,17 +114,10 @@ def boot(work, display='1280x800'):
     sys.exit(f'sin VM_BOOT_COMPLETED en 300 s; revisa {serial}')
 
 
-def watch(qmp, seconds, folder):
-    folder = Path(folder).resolve(); folder.mkdir(parents=True, exist_ok=True)
-    sizes, hashes = [], set()
-    for i in range(seconds):
-        t = time.monotonic(); path = folder / f'frame-{i:04d}.png'
-        qmp.cmd('screendump', filename=str(path), format='png')
-        data = path.read_bytes(); sizes.append(len(data)); hashes.add(hashlib.sha256(data).hexdigest())
-        time.sleep(max(0, 1 - (time.monotonic() - t)))
-    # Un framebuffer negro de 1280x800 comprime a unos KB: el tamaño delata una captura vacía.
-    print(json.dumps({'frames': seconds, 'distinct': len(hashes), 'min_bytes': min(sizes), 'max_bytes': max(sizes),
-                      'looks_blank': max(sizes) < 50_000}))
+def latest_frame(run_dir):
+    frames = sorted((Path(run_dir) / 'frames').glob('frame-*.png'))
+    if not frames: sys.exit('el cliente headless aún no ha escrito ningún frame')
+    return frames[-1]
 
 
 def do(run_dir, steps):
@@ -126,9 +127,7 @@ def do(run_dir, steps):
     qmp, helper = QMP(run_dir), None
     for step in steps:
         kind, _, rest = step.partition(':'); t = time.monotonic()
-        if kind == 'shot': qmp.cmd('screendump', filename=str(Path(rest).resolve()), format='png')
-        elif kind == 'watch':
-            seconds, folder = rest.split(':', 1); watch(qmp, int(seconds), folder)
+        if kind == 'shot': shutil.copyfile(latest_frame(run_dir), rest)
         elif kind == 'key': qmp.combo(rest.split('-'))
         elif kind == 'type': qmp.text(rest)
         elif kind == 'click':
