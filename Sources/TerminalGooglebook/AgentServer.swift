@@ -27,7 +27,7 @@ final class AgentServer {
     private static let point: [String: Any] = ["type": "integer", "minimum": 0]
     private static let after: [String: Any] = ["type": "boolean", "description": "Also return a screenshot taken shortly after the action."]
     static let tools: [[String: Any]] = [
-        ["name": "start", "description": "Turn on the virtual Googlebook and wait until it is ready, about a minute. Does nothing if it is already on. Returns the command the user can run to watch you live: tell them.",
+        ["name": "start", "description": "Turn on the virtual Googlebook and wait until it is ready, about a minute. Does nothing if it is already on. Returns the command the user can run to watch you live: tell them. If setup is missing or running, it says so and what to do.",
          "inputSchema": schema([:])],
         ["name": "screenshot", "description": "Capture the virtual Googlebook's screen. Returns the image and a local PNG path. Coordinates for other tools are pixels in this image.",
          "inputSchema": schema([:]), "annotations": ["readOnlyHint": true]],
@@ -94,6 +94,8 @@ final class AgentServer {
         case "start": return try await startMachine()
         case "screenshot": return try await screenshot()
         case "status":
+            let assets = Assets(store: store, executable: executable)
+            if !assets.isInstalled { return [["type": "text", "text": Setup(store: store, assets: assets, launcher: launcher).summary().text]] }
             let reply = try await guest(Request(action: "status", timeout: 15))
             let summary = reply.values.sorted { $0.key < $1.key }.map { "\($0.key): \($0.value)" }.joined(separator: "\n")
             return [["type": "text", "text": "VM '\(name)' is running.\n" + summary]]
@@ -129,9 +131,8 @@ final class AgentServer {
 
     private func startMachine() async throws -> [[String: Any]] {
         // La primera vez son 9 GB de descarga: esa decisión es del usuario, no del agente.
-        guard Assets(store: store, executable: executable).isInstalled else {
-            throw Failure("The virtual Googlebook is not set up yet. Ask the user to run `\(launcher) up` in a terminal; the first time it downloads about 9 GB from Google.")
-        }
+        let assets = Assets(store: store, executable: executable)
+        guard assets.isInstalled else { return [["type": "text", "text": Setup(store: store, assets: assets, launcher: launcher).summary().text]] }
         let process = Process()
         process.executableURL = executable
         process.arguments = ["up", name, "--no-view"]

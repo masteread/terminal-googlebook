@@ -9,6 +9,7 @@ final class CLI {
         (Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])).standardizedFileURL.resolvingSymlinksInPath()
     }
     var assets: Assets { Assets(store: store, executable: executableURL) }
+    var setup: Setup { Setup(store: store, assets: assets, launcher: launcherPath) }
 
     func run(_ input: [String]) async throws {
         let command = input.first ?? "help"
@@ -17,6 +18,10 @@ final class CLI {
         case "help", "--help", "-h": print(Self.help)
         case "--version", "version": print("terminal-googlebook \(appVersion)")
         case "up": try await up(tail)
+        case "setup":
+            _ = try Arguments(tail)
+            try await setup.run(showNext: true)
+            try printJSON(["state": "ready"])
         case "doctor":
             _ = try Arguments(tail)
             try doctor()
@@ -34,6 +39,10 @@ final class CLI {
             print(String(decoding: try encoder.encode(machines), as: UTF8.self))
         case "status":
             let name = try Arguments(tail).machineName()
+            guard assets.isInstalled else {
+                let summary = setup.summary()
+                try printJSON(["name": name, "state": summary.state, "detail": summary.text]); return
+            }
             _ = try store.load(name)
             guard Self.isRunning(try store.directory(name)) else { try printJSON(["name": name, "state": "stopped"]); return }
             try printJSON(try await call(name, Request(action: "status", timeout: 15)).values)
@@ -105,7 +114,7 @@ final class CLI {
             let machine = Machine(name: name, cpu: try args.integer("cpus", default: 4, range: 1...32), memoryGiB: try args.integer("memory", default: 4, range: 2...64),
                                   width: try args.integer("width", default: 1280, range: 640...3840), height: try args.integer("height", default: 800, range: 480...2400),
                                   network: !args.flags.contains("offline"))
-            if !assets.isInstalled { try install() }
+            try await setup.run(showNext: false)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             // En APFS es un clon: cada VM ocupa solo lo que cambia respecto a la imagen base.
             let disk = directory.appendingPathComponent("googlebook.raw")
@@ -163,7 +172,7 @@ final class CLI {
             let values = try? store.root.deletingLastPathComponent().resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
             let free = Int((values?.volumeAvailableCapacityForImportantUsage ?? 0) / (1 << 30))
             check("disk", free >= 60, "\(free) GB free; the first `up` needs 60 GB")
-            checks.append(["name": "vm-files", "status": "pending", "detail": "`terminal-googlebook up` downloads them, about 9 GB"])
+            checks.append(["name": "vm-files", "status": "pending", "detail": "`terminal-googlebook setup` downloads them: about 9 GB, usually 30 to 60 minutes"])
         }
         let healthy = !checks.contains { $0["status"] == "fail" }
         let data = try JSONSerialization.data(withJSONObject: ["healthy": healthy, "version": appVersion, "checks": checks], options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
@@ -171,30 +180,10 @@ final class CLI {
         if !healthy { throw Failure("terminal-googlebook doctor found a problem; see the checks above.") }
     }
 
-    /// Descarga la imagen de Google y arma el disco en esta máquina; nada de eso se redistribuye.
-    private func install() throws {
-        guard let sources = assets.vmSources else { throw Failure("This build has no VM installer. Reinstall terminal-googlebook.") }
-        stderr("Downloading the Googlebook image from Google and assembling the disk. The first time takes about 9 GB and needs 60 GB free…")
-        let process = Process()
-        process.executableURL = sources.appendingPathComponent("install.sh")
-        var environment = ProcessInfo.processInfo.environment
-        environment["GOOGLEBOOK_WORK"] = assets.work.path
-        if let bundle = assets.bundle {
-            environment["GBOS_BUNDLE"] = bundle.path
-            let tools = ["python/bin", "tools/bin", "tools/sbin"].map { bundle.appendingPathComponent($0).path }
-            environment["PATH"] = (tools + [environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"]).joined(separator: ":")
-        }
-        process.environment = environment
-        process.standardOutput = FileHandle.standardError
-        try FileManager.default.createDirectory(at: assets.work, withIntermediateDirectories: true)
-        try process.run(); process.waitUntilExit()
-        guard process.terminationStatus == 0, assets.isInstalled else { throw Failure("The VM installation failed; see the output above.") }
-    }
-
     func start(_ name: String, wait: Bool, timeout: Int, quiet: Bool = false) async throws {
         let directory = try store.directory(name)
         if !Self.isRunning(directory) {
-            guard assets.isInstalled else { throw Failure("The VM files are missing from \(assets.work.path). Run: terminal-googlebook up \(name)") }
+            guard assets.isInstalled else { throw Failure("The VM files are missing from \(assets.work.path). Run: terminal-googlebook setup") }
             let log = directory.appendingPathComponent("runtime.log")
             if !FileManager.default.fileExists(atPath: log.path) { FileManager.default.createFile(atPath: log.path, contents: nil, attributes: [.posixPermissions: 0o600]) }
             let handle = try FileHandle(forWritingTo: log)
@@ -214,11 +203,14 @@ final class CLI {
             guard Self.isRunning(directory) else { throw Failure("The VM did not start: \(lastLine(log) ?? "no details"). Details: \(log.path)") }
         }
         guard wait else { if !quiet { try printJSON(["name": name, "state": "starting"]) }; return }
-        let deadline = Date().addingTimeInterval(Double(timeout))
+        let began = Date(), deadline = began.addingTimeInterval(Double(timeout)), tty = isatty(STDERR_FILENO) == 1
+        if !tty { stderr("Starting Android; usually under a minute.") }
         while Date() < deadline {
             guard Self.isRunning(directory) else { throw Failure("The VM stopped while starting. Details: \(directory.path)/runtime.log") }
+            if tty { _ = writeAll(STDERR_FILENO, Data("\r\u{1b}[KStarting Android, usually under a minute… \(Int(Date().timeIntervalSince(began)))s".utf8)) }
             if let reply = try? await call(name, Request(action: "status", arguments: ["quick": "true"], timeout: 2)),
                reply.values["bootCompleted"] == "true", reply.values["helperConnected"] == "true" {
+                if tty { stderr("\r\u{1b}[K✓ Ready in \(Int(Date().timeIntervalSince(began)))s") }
                 try printJSON(try await call(name, Request(action: "status", timeout: 15)).values)
                 return
             }
@@ -315,7 +307,9 @@ final class CLI {
     start [NAME] [--detach]     Boot an existing VM with no window on the host
     stop [NAME] [--force]       Shut Android down cleanly (or power off immediately)
     doctor                      Check that this Mac can run the VM, as JSON
-    status [NAME]               VM, pointer helper and user picker, as JSON
+    setup                       Download and assemble the VM files, with progress and a time report.
+                                Run again to continue; another terminal follows the same setup
+    status [NAME]               Setup progress, or VM, pointer helper and user picker, as JSON
     ls                          List VMs as JSON
 
     action [NAME] status

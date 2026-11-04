@@ -18,7 +18,8 @@ Instala en `~/.local` y no toca tu shell: si `~/.local/bin` no está en tu `PATH
 
 ```bash
 terminal-googlebook doctor                # comprueba esta Mac
-terminal-googlebook up                    # abre el viewer; la primera vez descarga unos 9 GB de Google y UTM
+terminal-googlebook setup                 # descarga unos 9 GB de Google y UTM; si se corta, córrelo otra vez
+terminal-googlebook up                    # abre el viewer
 terminal-googlebook action open_url https://example.com
 terminal-googlebook action screenshot --output /tmp/guest.png
 terminal-googlebook stop
@@ -45,7 +46,7 @@ Conecta tu agente una vez:
 ```bash
 claude mcp add --scope user terminal-googlebook -- terminal-googlebook mcp
 terminal-googlebook skills install
-terminal-googlebook up --no-view   # solo la primera vez: descarga unos 9 GB
+terminal-googlebook setup          # solo la primera vez: unos 9 GB, con barra de progreso y reporte de tiempo
 ```
 
 Después, en cualquier conversación nueva, pídele una tarea: el agente enciende su máquina con la tool `start`.

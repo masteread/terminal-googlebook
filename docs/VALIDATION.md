@@ -51,6 +51,18 @@ Paquete con firma ad-hoc, de 47 MB. Pruebas con `v0.1.0-3`.
 - **Host durante esa tarea:** el hash del clipboard no cambió y la VM no abrió ventanas. La app al frente y el puntero no se pudieron usar como prueba: la Mac estaba en uso.
 - **Input perdido:** en esa tarea, `type` justo después de abrir la búsqueda de Settings dejó `d ver` en vez de `Android version`. El agente lo vio en el screenshot y reintentó. La skill ya avisa de que las teclas enviadas demasiado pronto pueden perderse; no está corregido.
 
+### Instalación: progreso y reporte
+
+`setup` probado en una pty con `v0.1.0-5`, reanudando descargas reales a medias (UTM y Googlebook OS) y rehaciendo el disco:
+
+- Barra con paso, porcentaje, GB, velocidad y tiempo restante. Reporte final de 1m31s, por fases. Ensamblar el disco tardó de 5 a 8 s.
+- Sin terminal, una línea por paso y otra cada 30 s. Una segunda `setup` sigue a la primera y termina con el mismo reporte.
+- Durante la instalación, `status` y la tool `start` responden en qué paso va.
+- Cortada a mitad: sale con código 1, dice en qué fase paró y el log; `status` da `stopped` y el reintento termina.
+- `up` muestra el contador de arranque y `✓ Ready in 41s`.
+
+Sin probar: el aviso de red detenida, y la instalación completa con estas barras en una terminal real. "30 a 60 minutos" sale de una sola descarga a unos 3 MB/s.
+
 ### Ver en vivo
 
 Con un cliente MCP real y el viewer en una pty de iTerm2: `view` espera con la VM apagada, `start` la enciende en 39 s y responde el comando para mirar, y un segundo `start` tarda 0.1 s. El click del agente aparece en el frame, con puntero y anillo en la posición correcta, y `agent · click 640,400` en el pie. `activity` guarda `type 10 characters`, nunca el texto. Falta verlo en iTerm2 real.

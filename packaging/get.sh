@@ -18,12 +18,17 @@ curl -fL --progress-bar "$url" -o "$work/$archive"
 echo "$sha256  $work/$archive" | shasum -a 256 -c - >/dev/null || { echo 'Checksum mismatch; nothing was installed.' >&2; exit 1; }
 ditto -x -k "$work/$archive" "$work/unpacked"
 bash "$work/unpacked/${archive%.zip}/install.sh" "$@"
+echo "Installed in ${SECONDS}s."
 cat <<'TEXT'
 
 Next:
-  terminal-googlebook doctor                                      # check this Mac
-  terminal-googlebook up                                          # first run downloads about 9 GB
-  claude mcp add terminal-googlebook -- terminal-googlebook mcp   # computer-use tools for Claude Code
-  terminal-googlebook skills install                              # the agent skill (~/.claude/skills)
-  terminal-googlebook mcp --config                                # config for other MCP clients
+  1. Check this Mac:             terminal-googlebook doctor
+  2. Download the VM files:      terminal-googlebook setup
+     About 9 GB and 30 to 60 minutes, with a progress bar. If it stops, run it again.
+  3. Use it yourself:            terminal-googlebook up
+     Or give it to Claude Code:  claude mcp add --scope user terminal-googlebook -- terminal-googlebook mcp
+                                 terminal-googlebook skills install
+     And watch your agent live:  terminal-googlebook view
+
+If you are an agent: run setup in the background and check it with `terminal-googlebook status`.
 TEXT

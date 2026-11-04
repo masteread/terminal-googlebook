@@ -52,4 +52,3 @@ echo "Installed terminal-googlebook $version: $launcher"
 case ":$PATH:" in *":$prefix/bin:"*) echo 'Run: terminal-googlebook up' ;;
   *) echo "Add $prefix/bin to your PATH, or run:"; echo "  \"$launcher\"" ;;
 esac
-echo 'The first `up` downloads about 9 GB from Google and UTM, and needs 60 GB free.'
