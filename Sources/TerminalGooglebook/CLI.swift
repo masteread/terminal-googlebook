@@ -69,6 +69,7 @@ final class CLI {
             guard TerminalViewer.supportsCurrentTerminal else { throw Failure("The viewer needs Ghostty, Kitty or iTerm2, outside tmux. Use the CLI or MCP tools from other terminals.") }
             // Se puede abrir antes de que el agente encienda la VM. Ctrl+C sale.
             let directory = try store.directory(name)
+            ViewerWindow.holdLock(directory)
             if !Self.isRunning(directory) { stderr("Waiting for VM '\(name)' to start. Tell your agent to start it, or run: terminal-googlebook start \(name == "default" ? "" : name)") }
             while !Self.isRunning(directory) || (try? store.load(name)) == nil { try await Task.sleep(nanoseconds: 500_000_000) }
             try await view(name)
@@ -84,24 +85,61 @@ final class CLI {
             try await AgentServer(store: store, name: name, executable: executableURL, launcher: launcherPath).run()
         case "skills":
             let args = try Arguments(tail, options: ["dir"])
-            guard let skill = bundledSkill else { throw Failure("This build has no bundled skill. Reinstall terminal-googlebook.") }
+            let skill = try requireSkill()
             switch args.positionals {
             case ["get"], []: print(try String(contentsOf: skill, encoding: .utf8), terminator: "")
             case ["path"]: print(skill.path)
             case ["install"]:
-                let root = args.options["dir"].map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
-                    ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/skills")
-                let destination = root.appendingPathComponent("terminal-googlebook/SKILL.md")
-                if let existing = try? String(contentsOf: destination, encoding: .utf8), !existing.contains("\nname: terminal-googlebook\n") {
-                    throw Failure("Refusing to replace a different skill at \(destination.path)")
-                }
-                try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try Data(contentsOf: skill).write(to: destination, options: .atomic)
-                try printJSON(["installed": destination.path])
+                try printJSON(["installed": try installSkill(skill, into: args.options["dir"]).path])
             default: throw Failure("Usage: terminal-googlebook skills [get|path|install [--dir ~/.claude/skills]]")
             }
+        case "connect": try connect()
         default: throw Failure("Unknown command: \(command). Run terminal-googlebook help.")
         }
+    }
+
+    private func requireSkill() throws -> URL {
+        guard let skill = bundledSkill else { throw Failure("This build has no bundled skill. Reinstall terminal-googlebook.") }
+        return skill
+    }
+
+    private func installSkill(_ skill: URL, into directory: String?) throws -> URL {
+        let config = ProcessInfo.processInfo.environment["CLAUDE_CONFIG_DIR"].map { URL(fileURLWithPath: $0) }
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude")
+        let root = directory.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) } ?? config.appendingPathComponent("skills")
+        let destination = root.appendingPathComponent("googlebook/SKILL.md")
+        if let existing = try? String(contentsOf: destination, encoding: .utf8), !existing.contains("\nname: googlebook\n") {
+            throw Failure("Refusing to replace a different skill at \(destination.path)")
+        }
+        try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(contentsOf: skill).write(to: destination, options: .atomic)
+        return destination
+    }
+
+    /// Un solo paso para que Claude Code tenga su computadora en cualquier conversación nueva.
+    private func connect() throws {
+        let skill = try requireSkill()
+        func claude(_ arguments: [String]) throws -> Int32 {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            process.arguments = ["claude", "mcp"] + arguments
+            process.standardOutput = FileHandle.nullDevice; process.standardError = FileHandle.nullDevice; process.standardInput = FileHandle.nullDevice
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus
+        }
+        // Apunta al lanzador estable, sin depender del PATH. Quitar antes lo hace repetible.
+        _ = try claude(["remove", "--scope", "user", "terminal-googlebook"])
+        let status = try claude(["add", "--scope", "user", "terminal-googlebook", "--", launcherPath, "mcp"])
+        if status == 127 { throw Failure("Claude Code was not found. Install it from https://claude.com/claude-code and run this again.") }
+        guard status == 0 else { throw Failure("`claude mcp add` failed with code \(status).") }
+        let installed = try installSkill(skill, into: nil)
+        stderr("""
+        ✓ Claude Code now has its own computer.
+        Start a new Claude Code conversation and say "open your computer", in any language, or type /googlebook.
+        A terminal window opens so you can watch it live.
+        """)
+        try printJSON(["mcp": "terminal-googlebook", "skill": installed.path])
     }
 
     /// Crea la VM si falta (descarga e instala lo necesario) y la deja arrancada.
@@ -133,6 +171,7 @@ final class CLI {
 
     private func view(_ name: String) async throws {
         let directory = try store.directory(name)
+        ViewerWindow.holdLock(directory)
         try await TerminalViewer(directory: directory, machine: try store.load(name)).run()
         stderr(Self.isRunning(directory) ? "VM '\(name)' is still running. Stop it with: terminal-googlebook stop \(name == "default" ? "" : name)" : "VM '\(name)' stopped.")
     }
@@ -269,11 +308,11 @@ final class CLI {
     /// The agent skill shipped inside the app bundle, so its instructions match this version.
     /// Development builds outside a bundle fall back to the repository copy.
     var bundledSkill: URL? {
-        let bundled = executableURL.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Resources/skills/terminal-googlebook/SKILL.md")
+        let bundled = executableURL.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Resources/skills/googlebook/SKILL.md")
         if FileManager.default.fileExists(atPath: bundled.path) { return bundled }
         var directory = executableURL.deletingLastPathComponent()
         for _ in 0..<6 {
-            let candidate = directory.appendingPathComponent("skills/terminal-googlebook/SKILL.md")
+            let candidate = directory.appendingPathComponent("skills/googlebook/SKILL.md")
             if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
             directory.deleteLastPathComponent()
         }
@@ -325,6 +364,7 @@ final class CLI {
 
     mcp [NAME]                  MCP server (stdio) with computer-use tools for agents
       [--config]                Print an mcpServers entry for other MCP clients
+    connect                     Give Claude Code this computer: adds the MCP server and the /googlebook skill
     skills get|path|install     The agent skill for this version
       [--dir ~/.claude/skills]
 

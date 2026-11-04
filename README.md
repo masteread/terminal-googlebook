@@ -48,17 +48,18 @@ dist/terminal-googlebook up
 
 ## Darle su máquina a un agente y verlo en vivo
 
-Conecta tu agente una vez:
+Prepárala una vez:
 
 ```bash
-claude mcp add --scope user terminal-googlebook -- terminal-googlebook mcp
-terminal-googlebook skills install
-terminal-googlebook setup          # solo la primera vez: unos 9 GB, con barra de progreso y reporte de tiempo
+terminal-googlebook setup      # solo la primera vez: unos 9 GB, con barra de progreso y reporte de tiempo
+terminal-googlebook connect    # le da esta computadora a Claude Code
 ```
 
-Después, en cualquier conversación nueva, pídele una tarea: el agente enciende su máquina con la tool `start`.
+Después, en cualquier conversación nueva de Claude Code, dile "abre tu computadora", en el idioma que quieras, o escribe `/googlebook`. También la usa si le pides una tarea que requiere navegar por un sitio, como buscar boletos.
 
-Para mirarlo, abre otra pestaña en Ghostty, Kitty o iTerm2. Puedes hacerlo antes de darle la tarea, porque espera a que la VM encienda:
+Claude la enciende y abre una ventana de Ghostty, Kitty o iTerm2 para que lo veas en vivo. Necesitas tener una de esas terminales. Con iTerm2, macOS pide permiso de Automatización la primera vez. La primera vez que Claude use la computadora sin `/googlebook`, te pide permiso una vez: elige no volver a preguntar.
+
+También puedes abrir la vista tú mismo, incluso antes de darle la tarea, porque espera a que la VM encienda:
 
 ```bash
 terminal-googlebook view

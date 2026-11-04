@@ -72,6 +72,7 @@ Con un cliente MCP real y el viewer en una pty de iTerm2: `view` espera con la V
 ### Desviaciones del PRD
 
 - **Tool `start` y puntero del agente:** el PRD no los pide. Se agregaron para que un agente encienda su máquina y un dev lo vea en vivo. La tool no descarga: la primera vez pide al usuario correr `up`.
+- **`connect`, `/googlebook` y ventana automática:** el PRD no los pide. `start` abre una ventana de terminal en el host para ver la VM en vivo; la VM sigue sin abrir ventanas propias. Probado con Claude Code en modo `-p`: "abre tu computadora" y "ouvre ton ordinateur" cargaron la skill y encendieron la VM, y `/googlebook` no pidió permisos. Una segunda llamada a `start` no abrió otra ventana. Abrir la ventana solo se probó en iTerm2; Ghostty y Kitty, sin probar. La sesión interactiva y el aviso de permiso de una Mac nueva, sin probar.
 - **Release sin identidad:** el PRD pide un release firmado. Se usa firma ad-hoc y el SHA-256 de `get.sh`. Sin notarizar, macOS rechaza el zip bajado con el navegador; por eso se instala con `curl`. No se ha comprobado en una Mac que nunca lo haya visto.
 - **Licencias:** el paquete incluye binarios GPL y LGPL, no solo MIT y Apache-2.0. Ver `THIRD_PARTY.md`. Sus fuentes se adjuntan al release. Es una revisión técnica, no legal: conviene una revisión legal antes de hacerlo público.
 

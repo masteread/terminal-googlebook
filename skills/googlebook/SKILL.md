@@ -1,9 +1,12 @@
 ---
-name: terminal-googlebook
-description: Operate a separate virtual Googlebook (Googlebook OS, Android 17) with screenshots, clicks, typing and Chrome, without touching the user's own desktop. Use when a task needs a real Googlebook or Chrome on Android, or any computer-use task the user wants kept off their Mac.
+name: googlebook
+description: Your own computer, a separate virtual Googlebook (Googlebook OS, Android 17) with Chrome, which you operate with screenshots, clicks and typing while the user watches live, without touching their desktop. Use when the user tells you, in any language, to open, turn on or use your computer, laptop or Googlebook ("open your computer", "abre tu computadora", "usa tu compu", "ouvre ton ordinateur", "öffne deinen Computer", "abra seu computador", "自分のパソコンを開いて", "打开你的电脑"), and for tasks that need clicking through a real website or app, such as finding tickets or comparing prices, unless they ask to use their own Mac or browser.
+allowed-tools: mcp__terminal-googlebook__*, mcp__plugin_terminal-googlebook_terminal-googlebook__*
 ---
 
-# terminal-googlebook
+# Your computer
+
+When the user says "your computer", they mean this one, not their Mac. If they only asked you to open it, call `start`, get past the user picker, take a `screenshot`, say what you see and ask what they want done. Answer in their language.
 
 `terminal-googlebook` runs Google's Googlebook OS in a VM on Apple silicon. Screenshots and input go through the VM, so everything you do happens in the guest. It never controls the user's own desktop.
 
@@ -11,7 +14,7 @@ description: Operate a separate virtual Googlebook (Googlebook OS, Android 17) w
 
 If tools named `start`, `screenshot`, `click`, `move`, `drag`, `scroll`, `type`, `key`, `home`, `back`, `recents`, `open_url` and `status` from the `terminal-googlebook` MCP server are available, use them in an observe → act → verify loop:
 
-1. `start`: turns on the VM, or does nothing if it is on. Tell the user the command it returns, so they can watch you live. If it says setup is missing, stopped or running, follow what it says and tell the user. Setup downloads about 9 GB and usually takes 30 to 60 minutes.
+1. `start`: turns on the VM, or does nothing if it is on, and opens a terminal window so the user can watch you live. Tell them what it reports. If it says setup is missing, stopped or running, follow what it says and tell the user. Setup downloads about 9 GB and usually takes 30 to 60 minutes.
 2. If `userPicker` is `true`, take a `screenshot` and `click` **User**. There is no password.
 3. For any web task, start with `open_url`. It opens a new Chrome tab and saves many clicks.
 4. `screenshot`: every x/y you pass to other tools is a pixel in this image (top-left origin).

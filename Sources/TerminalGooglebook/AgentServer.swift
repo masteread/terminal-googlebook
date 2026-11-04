@@ -15,8 +15,8 @@ final class AgentServer {
     init(store: Store, name: String, executable: URL, launcher: String) { self.store = store; self.name = name; self.executable = executable; self.launcher = launcher }
 
     static let instructions = """
-    Controls a separate virtual Googlebook, not the user's own desktop. Call `start` first and tell \
-    the user the command it returns, so they can watch you live. If userPicker is true, take a screenshot and click User (there is no password). For any web task \
+    Controls your own computer: a separate virtual Googlebook, not the user's desktop. Call `start` first: it \
+    opens a live view for the user, and says what to tell them. If userPicker is true, take a screenshot and click User (there is no password). For any web task \
     start with `open_url`. Every x/y is a pixel in the latest screenshot (top-left origin). Take \
     another screenshot after actions to check the result. Never add a Google account to this VM.
     """
@@ -27,7 +27,7 @@ final class AgentServer {
     private static let point: [String: Any] = ["type": "integer", "minimum": 0]
     private static let after: [String: Any] = ["type": "boolean", "description": "Also return a screenshot taken shortly after the action."]
     static let tools: [[String: Any]] = [
-        ["name": "start", "description": "Turn on the virtual Googlebook and wait until it is ready, about a minute. Does nothing if it is already on. Returns the command the user can run to watch you live: tell them. If setup is missing or running, it says so and what to do.",
+        ["name": "start", "description": "Turn on your computer, the virtual Googlebook, and wait until it is ready, about a minute. Opens a terminal window on the user's Mac so they can watch you live, unless one is already open. Does nothing else if it is already on. If setup is missing or running, it says so and what to do.",
          "inputSchema": schema([:])],
         ["name": "screenshot", "description": "Capture the virtual Googlebook's screen. Returns the image and a local PNG path. Coordinates for other tools are pixels in this image.",
          "inputSchema": schema([:]), "annotations": ["readOnlyHint": true]],
@@ -133,6 +133,14 @@ final class AgentServer {
         // La primera vez son 9 GB de descarga: esa decisión es del usuario, no del agente.
         let assets = Assets(store: store, executable: executable)
         guard assets.isInstalled else { return [["type": "text", "text": Setup(store: store, assets: assets, launcher: launcher).summary().text]] }
+        // Antes de arrancar: el usuario ve la ventana de inmediato y el viewer espera a la VM.
+        let watch = name == "default" ? "\(launcher) view" : "\(launcher) view \(name)"
+        let window: String
+        switch (try? ViewerWindow.open(name: name, directory: try store.directory(name), launcher: launcher)) ?? .unavailable {
+        case .opened(let terminal): window = "A live view opened in \(terminal) on the user's Mac. Tell them they can watch you there, and that Ctrl+] closes it without stopping you."
+        case .alreadyOpen: window = "The user's live view is already open."
+        case .unavailable: window = "No live view could open here. Tell the user: to watch live, run this in Ghostty, Kitty or iTerm2: \(watch)"
+        }
         let process = Process()
         process.executableURL = executable
         process.arguments = ["up", name, "--no-view"]
@@ -142,8 +150,7 @@ final class AgentServer {
         let text = await Task.detached { String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self) }.value
         process.waitUntilExit()
         guard process.terminationStatus == 0 else { throw Failure(text) }
-        let watch = name == "default" ? "\(launcher) view" : "\(launcher) view \(name)"
-        return [["type": "text", "text": "\(text)\nTell the user: to watch live, run this in Ghostty, Kitty or iTerm2: \(watch)"]]
+        return [["type": "text", "text": "\(text)\n\(window)"]]
     }
 
     /// A point-sized screenshot, so image pixels are the coordinates the other tools take.

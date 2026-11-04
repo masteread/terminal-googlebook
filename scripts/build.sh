@@ -42,7 +42,7 @@ plist="$app/Contents/Info.plist"
 # The agent skill ships inside the app so `terminal-googlebook skills get` always matches this build.
 rm -rf "$app/Contents/Resources/skills"
 mkdir -p "$app/Contents/Resources/skills"
-cp -R skills/terminal-googlebook "$app/Contents/Resources/skills/"
+cp -R skills/googlebook "$app/Contents/Resources/skills/"
 codesign --force --sign "$identity" "${sign_options[@]}" "$app"
 ln -sfn TerminalGooglebook.app/Contents/MacOS/terminal-googlebook dist/terminal-googlebook
 codesign --verify --deep --strict "$app"

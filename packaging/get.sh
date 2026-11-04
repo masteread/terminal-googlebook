@@ -26,9 +26,8 @@ Next:
   2. Download the VM files:      terminal-googlebook setup
      About 9 GB and 30 to 60 minutes, with a progress bar. If it stops, run it again.
   3. Use it yourself:            terminal-googlebook up
-     Or give it to Claude Code:  claude mcp add --scope user terminal-googlebook -- terminal-googlebook mcp
-                                 terminal-googlebook skills install
-     And watch your agent live:  terminal-googlebook view
+     Or give it to Claude Code:  terminal-googlebook connect
+     Then tell Claude Code "open your computer", in any language, or type /googlebook.
 
 If you are an agent: run setup in the background and check it with `terminal-googlebook status`.
 TEXT

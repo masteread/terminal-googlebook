@@ -189,9 +189,8 @@ final class Setup {
 
         Next:
           Use it yourself:    \(launcher) up
-          Give it to Claude:  claude mcp add --scope user terminal-googlebook -- \(launcher) mcp
-                              \(launcher) skills install
-          Watch your agent:   \(launcher) view
+          Give it to Claude:  \(launcher) connect
+                              Then tell Claude Code "open your computer", or type /googlebook
         """)
     }
 
