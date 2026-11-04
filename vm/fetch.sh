@@ -6,11 +6,13 @@
 need curl "macOS"; need python3 "Xcode command line tools"; need hdiutil "macOS"
 mkdir -p "$WORK" "$DOWNLOADS"
 
-say "Image tools (Homebrew: erofs-utils, e2fsprogs, lz4, pkgconf)"
-need brew "https://brew.sh"
-for f in erofs-utils e2fsprogs lz4 pkgconf; do
-  brew list --formula "$f" >/dev/null 2>&1 || brew install -q "$f"
-done
+if [ -z "${GBOS_BUNDLE:-}" ]; then
+  say "Image tools (Homebrew: erofs-utils, e2fsprogs, lz4, pkgconf)"
+  need brew "https://brew.sh"
+  for f in erofs-utils e2fsprogs lz4 pkgconf; do
+    brew list --formula "$f" >/dev/null 2>&1 || brew install -q "$f"
+  done
+fi
 
 say "UTM 5.0.6 beta (QEMU, MoltenVK, ANGLE, SPICE)"
 if [ ! -d "$UTM_BETA_APP" ]; then
@@ -45,7 +47,7 @@ PY
   fetch_big "$url" "$DOWNLOADS/$CUTTLEFISH_ZIP" "$CUTTLEFISH_SHA256"
 fi
 if [ ! -f "$WORK/cuttlefish/manifest.json" ] || [ ! -f "$WORK/cuttlefish/bluetooth/android.hardware.bluetooth-service.cuttlefish" ]; then
-  PATH="$(brew --prefix erofs-utils)/bin:$(brew --prefix e2fsprogs)/sbin:$PATH" \
+  PATH="$(tool_prefix erofs-utils)/bin:$(tool_prefix e2fsprogs)/sbin:$PATH" \
     python3 "$ROOT/tools/unpack_cuttlefish.py" "$DOWNLOADS/$CUTTLEFISH_ZIP" "$WORK/cuttlefish"
 fi
 

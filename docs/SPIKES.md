@@ -6,7 +6,7 @@ La Fase 1 no empieza hasta que los tres pasen (instrucción del PRD).
 | --- | --- | --- |
 | 0.1 Headless | **Pasó** (M5, 16 GB, macOS 27.0.1) | Escritorio real a 1280x800 sin ventanas en el host; boot en 39 a 47 s; captura en unos 50 ms; apagado limpio en 4 s con código 0 |
 | 0.2 Input | **Pasó** (misma Mac) | Puntero preciso con el helper; `ctrl+t` abre pestaña y `Hola Mundo 123` llega exacto por QMP. Ver `evidencia/spike-0.2-chrome.png` |
-| 0.3 Instalación sin build | Pendiente | Solo hay una Mac: como mucho quedará parcial. El criterio 6 sigue pendiente |
+| 0.3 Instalación sin build | **Parcial** (una sola Mac) | Paquete de 43 MB instalado con `env -i`, sin Homebrew, NDK ni SDK en el `PATH`; la VM arrancó en 46 s desde esa instalación, sin bibliotecas de Homebrew ni del build original. Falta probarlo en otra Mac |
 
 ## Cómo reproducir 0.1 y 0.2
 
@@ -29,9 +29,17 @@ python3 spikes/spike.py do RUN_DIR poweroff
 - **Selector de usuario.** Apareció en un boot y no en otro; las acciones se pierden si no se comprueba antes.
 - **`python3` de Xcode (3.9) rompe el build** porque meson 1.12.1 no se ofrece para esa versión; `prereqs.sh` no lo detecta.
 
+## Alcance del spike 0.3
+
+Se probó en esta misma Mac: `spikes/package.py` arma el paquete y `vm/install.sh` lo acepta con `GBOS_BUNDLE`. Reutilizó las descargas ya hechas, sin repetirlas.
+
+Sin probar, porque requiere otra máquina: otro chip u otra versión de macOS, un Mac que nunca tuvo Xcode, y un `/usr/bin` sin las herramientas de línea de comandos. `/opt/homebrew` seguía en disco; se comprobó con `otool` y `lsof` que no se usa.
+
+El paquete incluye un Python autónomo (python-build-standalone) porque los scripts de imagen lo necesitan y un Mac sin Xcode no trae `python3`. Su licencia y la de las herramientas incluidas (erofs-utils y e2fsprogs tienen partes GPL) hay que revisarlas antes de publicar un release; el PRD solo contempla MIT y Apache-2.0.
+
 ## Bloqueos
 
-El spike 0.3 y el criterio 6 piden una segunda Mac y no hay ninguna disponible.
+El spike 0.3 no puede cerrarse del todo y el criterio 6 sigue pendiente: piden una segunda Mac y no hay ninguna disponible.
 
 ## Diferencias entre el PRD y el código de gbos-vm
 

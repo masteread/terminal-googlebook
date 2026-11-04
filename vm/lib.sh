@@ -23,6 +23,8 @@ no_running_vm() {
     die "a VM from $WORK is running. Quit it first; rebuilding under it would crash it."
   fi
 }
+# Prefix of a Homebrew-provided image tool, or the prebuilt bundle's tools when GBOS_BUNDLE is set.
+tool_prefix() { if [ -n "${GBOS_BUNDLE:-}" ]; then echo "$GBOS_BUNDLE/tools"; else brew --prefix "$1"; fi; }
 say() { printf '\n== %s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "missing prerequisite: $1 ($2)"; }
