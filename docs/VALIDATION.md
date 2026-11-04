@@ -5,7 +5,7 @@ Resultados reales. Una sola Mac hasta ahora: M5, 16 GB, macOS 27.0.1. El criteri
 | Criterio | Estado | Evidencia |
 | --- | --- | --- |
 | 1. `curl \| bash` en un Mac limpio | Pendiente (Fase 3) | Solo existe la prueba parcial del spike 0.3 |
-| 2. Escritorio en la terminal en menos de 3 min | **Parcial** | Arranque de unos 40 s y frames decodificados en una pty que se hace pasar por iTerm2 y kitty. Falta verlo en iTerm2, Ghostty y Kitty de verdad |
+| 2. Escritorio en la terminal en menos de 3 min | **Parcial** | Arranque de unos 40 s y frames decodificados en una pty que se hace pasar por iTerm2 y kitty. Se probó en iTerm2 real y funciona muy bien; no se cronometró el tiempo hasta ver el escritorio. Falta verlo en Ghostty y Kitty de verdad |
 | 3. Claude Code solo con el plugin, sin intervención | **Pasó**, en una Mac no limpia | `claude -p --plugin-dir` con solo las tools del plugin, sobre un Chrome nunca abierto: 44 s, 15 turnos, 0.67 USD. Pasó solo los diálogos de Chrome y llegó al artículo. Ver `evidencia/fase-1-agente.jpg` |
 | 4. Host intacto | **Parcial** | 0 ventanas de la VM en el host y el hash del clipboard no cambió. El puntero del host no se pudo medir: la Mac estaba en uso durante la prueba. El código no llama a ninguna API de input o pantalla del host |
 | 5. `stop` limpio y `start` recupera el estado | **Pasó** | Apagado en 4 s con código 0; las pestañas de Chrome siguen tras `start` |
@@ -24,6 +24,8 @@ Resultados reales. Una sola Mac hasta ahora: M5, 16 GB, macOS 27.0.1. El criteri
 
 Medido con un guest real. El viewer corrió en una pty de prueba, no en una terminal real: los fps son lo que el viewer entrega a la pty, no lo que dibuja iTerm2 o Kitty.
 
+Después, `up` se usó en iTerm2 real y funciona muy bien. No quedó registrada la cifra de fps del encabezado.
+
 | Medida | Resultado | PRD |
 | --- | --- | --- |
 | Tool MCP hasta el primer frame distinto: `scroll` | mediana 70 ms, máx. 77 (16 muestras) | < 100 ms |
@@ -41,7 +43,8 @@ Medido con un guest real. El viewer corrió en una pty de prueba, no en una term
 
 ## Sin probar
 
-- El viewer en iTerm2, Ghostty y Kitty reales.
+- El viewer en Ghostty y Kitty reales.
+- La cifra de fps en iTerm2 real.
 - Las acciones de paleta Back, Recents, Switch window, Copy y Paste desde el viewer; sí pasaron por CLI con los mismos comandos.
 
 - Sesión de 8 horas.
