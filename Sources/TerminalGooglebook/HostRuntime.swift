@@ -105,7 +105,8 @@ final class QMP {
             ["type": "key", "data": ["down": down, "key": ["type": "qcode", "data": code]]]
         }
         try command("input-send-event", ["events": codes.map { event($0, true) }])
-        usleep(30_000)
+        // Android abre su selector de ventanas solo si Alt sigue pulsada un momento tras el Tab.
+        usleep(codes.contains("alt") && codes.contains("tab") ? 400_000 : 30_000)
         try command("input-send-event", ["events": codes.reversed().map { event($0, false) }])
         usleep(30_000)
     }
@@ -182,7 +183,7 @@ final class HostRuntime {
         self.machine = machine; self.directory = directory; self.assets = assets
         lock = try FileLock(directory.appendingPathComponent("runtime.lock"))
         let tokenURL = directory.appendingPathComponent("token")
-        for stale in ["token", "qmp.sock", "spice.sock", "serial.sock", "serial.log", "result.json"] {
+        for stale in ["token", "qmp.sock", "spice.sock", "frame.sock", "serial.sock", "serial.log", "result.json"] {
             try? FileManager.default.removeItem(at: directory.appendingPathComponent(stale))
         }
         helper = try PointerHelper(token: { (try? String(contentsOf: tokenURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) })
@@ -219,7 +220,7 @@ final class HostRuntime {
             try await Task.sleep(nanoseconds: 100_000_000)
         }
         frames.executableURL = assets.headless
-        frames.arguments = [spice]
+        frames.arguments = [spice, directory.appendingPathComponent("frame.sock").path]
         var environment = ProcessInfo.processInfo.environment
         environment["DYLD_FRAMEWORK_PATH"] = assets.work.appendingPathComponent("UTM-beta/UTM.app/Contents/Frameworks").path
         environment["VM_MOUSE_SEAMLESS"] = "0"
@@ -243,16 +244,25 @@ final class HostRuntime {
         withExtendedLifetime(termination) {}
         Self.keepAlive = termination
 
+        // El kernel avisa cuando llega una petición: sin peticiones, este proceso no gasta CPU ni añade latencia.
+        let exchange = open(directory.appendingPathComponent("exchange").path, O_EVTONLY | O_CLOEXEC)
+        let arrival = DispatchSemaphore(value: 0)
+        let watcher = DispatchSource.makeFileSystemObjectSource(fileDescriptor: exchange, eventMask: .write, queue: .global())
+        watcher.setEventHandler { arrival.signal() }
+        watcher.resume()
+        Self.keepAliveWatcher = watcher
         while true {
             watchBoot()
             for request in try mailbox.requests() {
                 do { try mailbox.respond(Reply(id: request.id, values: try await handle(request))) }
                 catch { try? mailbox.respond(Reply(id: request.id, error: error.localizedDescription)) }
             }
-            try await Task.sleep(nanoseconds: 4_000_000)
+            Self.waitBriefly(arrival)
         }
     }
+    private static func waitBriefly(_ arrival: DispatchSemaphore) { _ = arrival.wait(timeout: .now() + 0.5) }
     private static var keepAlive: Any?
+    private static var keepAliveWatcher: Any?
     static func runnerPath(_ assets: Assets) -> String {
         (assets.vmSources?.appendingPathComponent("run/run_vm.py").path) ?? assets.work.appendingPathComponent("run/run_vm.py").path
     }
@@ -350,18 +360,47 @@ final class HostRuntime {
         }
     }
 
-    private func click(x: Int, y: Int, button: String?, count: Int) throws {
+    /// Lleva el puntero a un punto de la pantalla.
+    private func move(x: Int, y: Int) throws {
         guard (0..<machine.width).contains(x), (0..<machine.height).contains(y) else {
             throw Failure("(\(x), \(y)) is outside the \(machine.width)×\(machine.height) screen")
         }
         helper.waitUntilConnected(timeout: 10)
-        let mask = button == "right" ? 2 : 1
         try helper.send("M \(x) \(y)")
+    }
+
+    private func click(x: Int, y: Int, button: String?, count: Int) throws {
+        let mask = button == "right" ? 2 : 1
+        try move(x: x, y: y)
         usleep(30_000)
         for _ in 0..<count {
             try helper.send("D \(mask)"); usleep(40_000)
             try helper.send("U \(mask)"); usleep(40_000)
         }
+    }
+
+    /// Pasos intermedios a unos 60 Hz: Android descarta un arrastre sin movimiento entre bajar y subir.
+    private func drag(x: Int, y: Int, toX: Int, toY: Int) throws {
+        try move(x: toX, y: toY)
+        try move(x: x, y: y)
+        usleep(30_000)
+        try helper.send("D 1")
+        usleep(40_000)
+        let steps = 12
+        for step in 1...steps {
+            try helper.send("M \(x + (toX - x) * step / steps) \(y + (toY - y) * step / steps)")
+            usleep(16_000)
+        }
+        usleep(40_000)
+        try helper.send("U 1")
+    }
+
+    /// `dy` positivo desplaza hacia arriba y negativo hacia abajo, como la rueda; `dx` positivo va
+    /// hacia la izquierda. Una muesca de rueda son 60 unidades.
+    private func scroll(x: Int, y: Int, dx: Int, dy: Int) throws {
+        try move(x: x, y: y)
+        usleep(20_000)
+        try helper.send(String(format: "S %.3f %.3f", -Double(dx) / 60, Double(dy) / 60))
     }
 
     /// Un intent VIEW por el canal de verbos. La alternativa de click en el dock y escribir en el
@@ -395,6 +434,15 @@ final class HostRuntime {
             let count = try a["count"] == nil ? (a["double"] == "true" ? 2 : 1) : int("count")
             guard (1...3).contains(count) else { throw Failure("count must be 1, 2 or 3") }
             try click(x: try int("x"), y: try int("y"), button: a["button"], count: count)
+        case "move": try move(x: try int("x"), y: try int("y"))
+        case "drag": try drag(x: try int("x"), y: try int("y"), toX: try int("toX"), toY: try int("toY"))
+        case "scroll":
+            let dx = a["dx"].flatMap { Int($0) } ?? 0, dy = a["dy"].flatMap { Int($0) } ?? 0
+            guard (-1000...1000).contains(dx), (-1000...1000).contains(dy), dx != 0 || dy != 0 else { throw Failure("scroll needs dx or dy between -1000 and 1000") }
+            try scroll(x: try int("x"), y: try int("y"), dx: dx, dy: dy)
+        case "home", "back", "recents":
+            helper.waitUntilConnected(timeout: 10)
+            try helper.send("K \(["home": 3, "back": 4, "recents": 187][request.action]!)")
         case "type": try type(try text("text"))
         case "key": try requireQMP().press(try GuestInput.chord(try text("key")))
         case "open_url": try openURL(try text("url"))

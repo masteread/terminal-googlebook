@@ -9,13 +9,13 @@ description: Operate a separate virtual Googlebook (Googlebook OS, Android 17) w
 
 ## Prefer the MCP tools
 
-If tools named `screenshot`, `click`, `type`, `key`, `open_url` and `status` from the `terminal-googlebook` MCP server are available, use them in an observe → act → verify loop:
+If tools named `screenshot`, `click`, `move`, `drag`, `scroll`, `type`, `key`, `home`, `back`, `recents`, `open_url` and `status` from the `terminal-googlebook` MCP server are available, use them in an observe → act → verify loop:
 
 1. `status`: the VM is running, `bootCompleted` and `helperConnected` are `true`.
 2. If `userPicker` is `true`, take a `screenshot` and `click` **User**. There is no password.
 3. For any web task, start with `open_url`. It opens a new Chrome tab and saves many clicks.
 4. `screenshot`: every x/y you pass to other tools is a pixel in this image (top-left origin).
-5. Act with `click` (`clicks: 2` double-clicks, `button: "right"`), `type` (literal text) or `key` (`enter`, `esc`, `tab`, `ctrl+t`, `ctrl+l`, arrows).
+5. Act with `click` (`clicks: 2` double-clicks, `button: "right"`), `type` (literal text) or `key` (`enter`, `esc`, `tab`, `ctrl+t`, `ctrl+l`, arrows, `meta` opens the launcher, `alt+tab` switches windows), `scroll` (at `x`,`y`; negative `dy` scrolls down), `drag` (`x`,`y` to `toX`,`toY`), `move` (hover), and `home`, `back`, `recents` (Android's system buttons).
 6. Look again: pass `screenshot: true` to an action, or call `screenshot`. A tool reporting "Sent" only means the input was delivered, so confirm the effect before the next step.
 
 Click a field before typing into it, and give a just-opened window a moment to take focus: keys sent too early can be lost or reordered.
@@ -37,6 +37,10 @@ Every command prints JSON and exits nonzero on failure. `NAME` defaults to `defa
 terminal-googlebook status NAME                 # stopped → terminal-googlebook start NAME
 terminal-googlebook action NAME screenshot --output /tmp/guest.png   # then view the PNG
 terminal-googlebook action NAME click X Y [--button right] [--count 2]
+terminal-googlebook action NAME move X Y
+terminal-googlebook action NAME drag X Y TO_X TO_Y
+terminal-googlebook action NAME scroll X Y --dy -300   # negative dy scrolls down
+terminal-googlebook action NAME home                   # or back, recents
 terminal-googlebook action NAME type 'literal text'
 terminal-googlebook action NAME key ctrl+t
 terminal-googlebook action NAME open_url https://example.com

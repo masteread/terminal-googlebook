@@ -9,9 +9,7 @@ let package = Package(
         .target(name: "TerminalGooglebookCore"),
         .target(name: "CPhoneShim"),
         .target(name: "TerminalUI", dependencies: ["CPhoneShim"]),
-        // Viewer.swift vuelve en la Fase 2, conectado a la fuente de frames del host.
         .executableTarget(name: "TerminalGooglebook", dependencies: ["TerminalGooglebookCore", "TerminalUI", "CPhoneShim"],
-            exclude: ["Viewer.swift"],
             linkerSettings: [.linkedFramework("CoreGraphics"), .linkedFramework("ImageIO"), .linkedFramework("UniformTypeIdentifiers")]),
         .testTarget(name: "TerminalGooglebookCoreTests", dependencies: ["TerminalGooglebookCore"])
     ],

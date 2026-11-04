@@ -198,7 +198,7 @@ Lo que no está aquí (multi-VM, snapshot de accesibilidad, clipboard, ventana n
 **Preguntas abiertas**
 
 - ¿El framebuffer de gbos-vm se puede exportar por shared memory con un parche chico a CocoaSpice, o conviene QMP `screendump` a disco en v1 aunque sea más lento?
-- ¿Qué atajo abre el launcher en Googlebook OS? Hay que verificarlo en el guest antes de armar la paleta de `Ctrl+G`.
+- ~~¿Qué atajo abre el launcher en Googlebook OS?~~ Resuelto en la Fase 2: la tecla `meta` (Super), verificada en el guest.
 - ¿`open_url` se implementa con un intent desde el helper (necesita extender el helper) o con `key` + `type` en la omnibox de Chrome (cero código en guest)? Empezar por lo segundo.
 
 **Referencias**

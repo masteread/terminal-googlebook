@@ -1,6 +1,6 @@
-import AppKit
 import Darwin
-import TerminalMacCore
+import Foundation
+import TerminalGooglebookCore
 import TerminalUI
 
 @MainActor
@@ -10,34 +10,29 @@ final class TerminalViewer {
         return isatty(STDIN_FILENO) == 1 && isatty(STDOUT_FILENO) == 1 && env["TMUX"] == nil &&
             (env["TERM_PROGRAM"] == "iTerm.app" || env["TERM_PROGRAM"] == "ghostty" || env["KITTY_WINDOW_ID"] != nil || env["TERM"]?.contains("kitty") == true)
     }
-    /// `login`: nobody reads the mailbox, so the guest has no logged-in session (or no helper) yet.
-    /// `permissions`: the helper runs but macOS has not allowed it to capture the screen yet.
-    private enum Link: Equatable { case connecting, live, snapshots, login, permissions, waiting(String) }
+    private enum Link: Equatable { case connecting, live }
     private struct Layout: Equatable {
         let desktop: DesktopPlacement
         let border: Bool
         let columns: Int, rows: Int
     }
     private struct Activity { let at: Date; let text: String; let ok: Bool; let milliseconds: Double? }
-    private struct Shortcut { let key: Character; let label: String; let chord: String; let glyph: String }
-    /// Mac shortcuts the terminal cannot send itself, because it keeps ⌘ for its own menus.
+    private struct Shortcut { let key: Character; let label: String; let action: String; let arguments: [String: String]; let glyph: String }
+    /// Lo que la terminal no puede mandar por sí misma: los botones de sistema de Android y atajos que ella se queda.
     private static let shortcuts: [Shortcut] = [
-        Shortcut(key: "s", label: "Spotlight", chord: "cmd+space", glyph: "⌘␣"), Shortcut(key: "t", label: "Previous app", chord: "cmd+tab", glyph: "⌘⇥"),
-        Shortcut(key: "m", label: "Mission Control", chord: "ctrl+up", glyph: "⌃↑"), Shortcut(key: "d", label: "Show desktop", chord: "f11", glyph: "F11"),
-        Shortcut(key: "n", label: "New window", chord: "cmd+n", glyph: "⌘N"), Shortcut(key: "w", label: "Close window", chord: "cmd+w", glyph: "⌘W"),
-        Shortcut(key: "q", label: "Quit app", chord: "cmd+q", glyph: "⌘Q"), Shortcut(key: "f", label: "Find", chord: "cmd+f", glyph: "⌘F"),
-        Shortcut(key: "c", label: "Copy", chord: "cmd+c", glyph: "⌘C"), Shortcut(key: "v", label: "Paste", chord: "cmd+v", glyph: "⌘V"),
-        Shortcut(key: "x", label: "Cut", chord: "cmd+x", glyph: "⌘X"), Shortcut(key: "a", label: "Select all", chord: "cmd+a", glyph: "⌘A"),
-        Shortcut(key: "z", label: "Undo", chord: "cmd+z", glyph: "⌘Z"), Shortcut(key: ",", label: "Settings", chord: "cmd+,", glyph: "⌘,")
+        Shortcut(key: "l", label: "Launcher", action: "key", arguments: ["key": "meta"], glyph: "Super"),
+        Shortcut(key: "s", label: "Switch window", action: "key", arguments: ["key": "alt+tab"], glyph: "Alt+Tab"),
+        Shortcut(key: "h", label: "Home", action: "home", arguments: [:], glyph: ""),
+        Shortcut(key: "b", label: "Back", action: "back", arguments: [:], glyph: ""),
+        Shortcut(key: "r", label: "Recents", action: "recents", arguments: [:], glyph: ""),
+        Shortcut(key: "c", label: "Copy", action: "key", arguments: ["key": "ctrl+c"], glyph: "Ctrl+C"),
+        Shortcut(key: "v", label: "Paste", action: "key", arguments: ["key": "ctrl+v"], glyph: "Ctrl+V")
     ]
 
     let mailbox: Mailbox
-    /// Lifecycle control for the VM process, used to show its native window for logging in.
-    let host: Mailbox
     let directory: URL
     let machine: Machine
     let graphics: String
-    let readOnly: Bool
     private let writer = TerminalWriter()
     private let renderer: DesktopRenderer
     private var metrics = TerminalMetricFilter()
@@ -45,7 +40,6 @@ final class TerminalViewer {
     private var hit: ImageLayout?
     /// The guest display in points: input coordinates, and the aspect ratio to lay out.
     private var points: (width: Int, height: Int)
-    private var failure: Error?
     private var quit = false, link = Link.connecting, palette = false
     private var queue: [Request] = [], labels: [UUID: String] = [:], inFlight = false
     private var anchor: (x: Int, y: Int, at: Date)?, lastClick: (x: Int, y: Int, at: Date, count: Int)?
@@ -53,33 +47,17 @@ final class TerminalViewer {
     private var activity: [Activity] = []
     private var previousChrome = ""
     private var fps = 0.0, fpsSample = (frames: 0, at: Date())
-    /// The native window was opened from the viewer; it is hidden again once the guest connects.
-    private var loginWindow = false
-    /// The helper's privacy permissions, from its status reply. Input needs Accessibility even while frames flow.
-    private var grants: (screen: Bool, input: Bool)?
-    private var grantsCheckedAt = Date.distantPast
-    private var inputBlocked: Bool { grants?.input == false }
     private var firstFrameShown = false
 
-    /// Set once a guest helper has answered, so later runs of `up` can skip the native setup window.
-    static func readyMarker(_ directory: URL) -> URL { directory.appendingPathComponent("guest-ready") }
-
-    init(directory: URL, machine: Machine, graphics: String?, readOnly: Bool) throws {
+    init(directory: URL, machine: Machine) throws {
         mailbox = try Mailbox(directory.appendingPathComponent("exchange"))
-        host = try Mailbox(directory.appendingPathComponent("host-control"), create: true)
-        self.directory = directory; self.machine = machine; self.readOnly = readOnly
+        self.directory = directory; self.machine = machine
         points = (machine.width, machine.height)
         let env = ProcessInfo.processInfo.environment
-        let detected = env["TERM_PROGRAM"] == "iTerm.app" ? "iterm" :
-            (env["KITTY_WINDOW_ID"] != nil || env["TERM"]?.contains("kitty") == true || env["TERM_PROGRAM"] == "ghostty") ? "kitty" : nil
-        guard let selected = graphics ?? detected, ["kitty", "iterm"].contains(selected) else {
-            throw Failure("Use Ghostty, Kitty or iTerm2 for inline graphics, or choose --protocol kitty|iterm. Use 'show' for a native window in other terminals. tmux passthrough is not implemented.")
-        }
-        guard isatty(STDIN_FILENO) == 1, isatty(STDOUT_FILENO) == 1 else { throw Failure("view needs an interactive terminal") }
-        if env["TMUX"] != nil { throw Failure("Run view outside tmux for now; graphics passthrough is not implemented") }
-        self.graphics = selected
+        guard Self.supportsCurrentTerminal else { throw Failure("The viewer needs Ghostty, Kitty or iTerm2, outside tmux. Use the CLI or MCP tools from other terminals.") }
+        graphics = env["TERM_PROGRAM"] == "iTerm.app" ? "iterm" : "kitty"
         // Kitty-protocol terminals start on PNG until they confirm shared memory support.
-        renderer = DesktopRenderer(writer: writer, transport: selected == "iterm" ? .iterm : .kittyDirect)
+        renderer = DesktopRenderer(writer: writer, transport: graphics == "iterm" ? .iterm : .kittyDirect)
     }
 
     func run() async throws {
@@ -94,7 +72,7 @@ final class TerminalViewer {
             source.setEventHandler { [weak self] in self?.quit = true }
             source.resume(); return source
         }
-        writer.write("\u{1b}[?1049h\u{1b}[?25l\u{1b}[2J" + (readOnly ? "" : "\u{1b}[?1002h\u{1b}[?1006h"))
+        writer.write("\u{1b}[?1049h\u{1b}[?25l\u{1b}[2J\u{1b}[?1002h\u{1b}[?1006h")
         queryMetrics()
         var probe = graphics == "kitty" ? DesktopRenderer.sharedMemoryProbe() : nil
         if let probe { writer.write(probe.query) }
@@ -107,8 +85,7 @@ final class TerminalViewer {
             tcsetattr(STDIN_FILENO, TCSAFLUSH, &original)
             for (index, source) in sources.enumerated() { source.cancel(); Darwin.signal(signals[index], oldHandlers[index]) }
         }
-        var frames: Task<Void, Never>?
-        defer { frames?.cancel() }
+        var streaming = false
         var parser = TerminalInput(), lastInput = Date(), previousSize = "", lastChrome = Date.distantPast
         let started = Date()
         while !quit {
@@ -137,93 +114,44 @@ final class TerminalViewer {
                 if metrics.graphicsReplies[31] == "OK" { renderer.configure(placement: layout?.desktop, transport: .kittySharedMemory) }
                 probe?.cleanup(); probe = nil
             }
-            if transportDecided, frames == nil, metrics.cellHeight != nil || Date().timeIntervalSince(started) > 0.4 { frames = streamFrames() }
+            if transportDecided, !streaming, metrics.cellHeight != nil || Date().timeIntervalSince(started) > 0.4 { streaming = true; streamFrames() }
             if wheel.dx != 0 || wheel.dy != 0, Date().timeIntervalSince(wheel.at) >= 0.03 { flushWheel() }
             sendNextInput()
             if Date().timeIntervalSince(lastChrome) >= 0.08 { lastChrome = Date(); drawChrome() }
-            try await Task.sleep(nanoseconds: 4_000_000)
+            // Sin input en curso duerme más: en reposo el viewer no debe gastar CPU.
+            let active = inFlight || !queue.isEmpty || wheel.dx != 0 || wheel.dy != 0 || anchor != nil || Date().timeIntervalSince(lastInput) < 1
+            try await Task.sleep(nanoseconds: active ? 4_000_000 : 30_000_000)
         }
-        if let failure { throw failure }
     }
 
     // MARK: Frames
 
-    /// Long-polls the guest for changed frames at the size the terminal draws them.
-    /// Older guest helpers answer with full PNG screenshots, which are polled instead.
-    private func streamFrames() -> Task<Void, Never> {
-        Task { @MainActor in
-            var since = -1, failures = 0
-            while !Task.isCancelled && !quit {
-                let target = layout?.desktop
-                // Check back quickly while waiting for a login, so the desktop appears right after it.
-                let request = Request(action: "screenshot", arguments: ["format": "bgra-lz4", "since": String(since), "wait": "500",
-                                                                      "maxWidth": String(target?.imageWidth ?? 1280), "maxHeight": String(target?.imageHeight ?? 800)],
-                                      timeout: link == .login ? 2 : 6)
-                defer { mailbox.remove("image-\(request.id.uuidString).bin"); mailbox.remove("image-\(request.id.uuidString).png") }
-                do {
-                    let reply = try await mailbox.call(request)
-                    failures = 0
-                    if grants?.input != true, Date().timeIntervalSince(grantsCheckedAt) > 2 { await checkGrants() }
-                    connected()
-                    let v = reply.values
-                    if let w = Int(v["pointWidth"] ?? v["width"] ?? ""), let h = Int(v["pointHeight"] ?? v["height"] ?? ""),
-                       (1...16384).contains(w), (1...16384).contains(h), (w, h) != points {
-                        points = (w, h); forceRelayout()
-                    }
-                    if v["unchanged"] == "true" { if link != .live { link = .live }; continue }
-                    guard let name = v["image"], [".bin", ".png"].contains(where: { name == "image-\(request.id.uuidString)\($0)" }),
-                          let data = try mailbox.read(name, limit: 64 * 1024 * 1024) else { throw Failure("Invalid frame from the guest helper") }
-                    if v["format"] == "bgra-lz4" {
-                        guard let width = Int(v["width"] ?? ""), let height = Int(v["height"] ?? ""), let stride = Int(v["bytesPerRow"] ?? ""),
-                              (1...8192).contains(width), (1...8192).contains(height), (width * 4...width * 4 + 1024).contains(stride) else { throw Failure("Invalid frame size") }
-                        since = Int(v["sequence"] ?? "") ?? -1
-                        link = .live
+    /// Lee frames del cliente SPICE, que solo escribe cuando la pantalla cambió: sin cambios, este
+    /// hilo queda bloqueado y no gasta nada. Si el socket se cierra y la VM ya no corre, sale.
+    private func streamFrames() {
+        let path = directory.appendingPathComponent("frame.sock").path, directory = directory, renderer = renderer
+        Thread.detachNewThread { [weak self] in
+            while true {
+                if let fd = try? connectUnix(path) {
+                    var header = [UInt32](repeating: 0, count: 4)
+                    while header.withUnsafeMutableBytes({ fill(fd, $0.baseAddress!, 16) }) {
+                        let width = Int(header[0]), height = Int(header[1]), stride = Int(header[2]), length = Int(header[3])
+                        guard (1...8192).contains(width), (1...8192).contains(height), stride >= width * 4, (1...(256 << 20)).contains(length) else { break }
+                        var data = Data(count: length)
+                        guard data.withUnsafeMutableBytes({ fill(fd, $0.baseAddress!, length) }) else { break }
                         renderer.submit(.pixels(data, width: width, height: height, bytesPerRow: stride))
-                    } else {
-                        link = .snapshots
-                        renderer.submit(.encoded(data))
-                        try await Task.sleep(nanoseconds: 120_000_000)
+                        Task { @MainActor in self?.received(width: width, height: height) }
                     }
-                } catch {
-                    if Task.isCancelled { break }
-                    failures += 1
-                    if let timeout = error as? MailboxTimeout {
-                        // An unread request means no helper is running; a read one means it is busy or stuck.
-                        link = timeout.pickedUp ? .waiting("The guest helper is not responding. Reopen TerminalMacGuest in the VM") : .login
-                    } else {
-                        // The helper answered with an error: most often a missing macOS permission.
-                        await checkGrants()
-                        link = grants.map { !$0.screen || !$0.input } == true ? .permissions : .waiting(error.localizedDescription)
-                    }
-                    if link != .login && link != .permissions { try? await Task.sleep(nanoseconds: min(2_000_000_000, UInt64(failures) * 300_000_000)) }
+                    close(fd)
                 }
+                if !CLI.isRunning(directory) { Task { @MainActor in self?.quit = true }; return }
+                usleep(200_000)
             }
         }
     }
-
-    private func checkGrants() async {
-        grantsCheckedAt = Date()
-        guard let values = try? await mailbox.call(Request(action: "status", timeout: 3)).values,
-              let screen = values["screenRecording"], let input = values["accessibility"] else { return }
-        grants = (screen == "true", input == "true")
-    }
-    /// The guest answered: remember that, and put away a window the viewer opened once nothing is left to do in it.
-    private func connected() {
-        if !FileManager.default.fileExists(atPath: Self.readyMarker(directory).path) {
-            FileManager.default.createFile(atPath: Self.readyMarker(directory).path, contents: nil, attributes: [.posixPermissions: 0o600])
-        }
-        guard loginWindow, !inputBlocked else { return }
-        loginWindow = false
-        record("Guest ready · back in the terminal", ok: true)
-        Task { @MainActor in _ = try? await host.call(Request(action: "hide", timeout: 5)) }
-    }
-    private func openLoginWindow() {
-        loginWindow = true
-        record("Opened the VM window · it hides once the guest is ready", ok: true)
-        Task { @MainActor in
-            do { _ = try await host.call(Request(action: "show", timeout: 5)) }
-            catch { loginWindow = false; record("Cannot open the VM window: \(error.localizedDescription)", ok: false) }
-        }
+    private func received(width: Int, height: Int) {
+        link = .live
+        if (width, height) != points { points = (width, height); forceRelayout() }
     }
 
     // MARK: Layout
@@ -261,13 +189,6 @@ final class TerminalViewer {
 
     // MARK: Chrome
 
-    /// "✕ Screen Recording   ✓ Accessibility", from the helper's last status reply.
-    private var grantLine: [Span] {
-        func mark(_ name: String, _ granted: Bool?) -> [Span] {
-            [Span(granted == true ? "✓ " : "✕ ", granted == true ? Theme.green : Theme.red), Span(name, granted == true ? Theme.muted : Theme.text)]
-        }
-        return mark("Screen Recording", grants?.screen) + [Span("     ")] + mark("Accessibility", grants?.input)
-    }
     private func drawChrome() {
         guard let layout else { return }
         let now = Date(), stats = renderer.currentStats
@@ -284,16 +205,11 @@ final class TerminalViewer {
         case .connecting: [Span("\(spin) connecting", Theme.yellow)]
         case .live where fps >= 0.5: [Span("● ", Theme.green), Span("live", Theme.bold + Theme.green), Span("  \(Int(fps.rounded())) fps", Theme.muted)]
         case .live: [Span("● ", Theme.green), Span("live", Theme.bold + Theme.green), Span("  idle", Theme.faint)]
-        case .snapshots: [Span("◐ ", Theme.yellow), Span("snapshots", Theme.yellow), Span(" · old guest helper: open My Shared Files/tools/TerminalMacGuest in the VM", Theme.faint)]
-        case .login: [Span("◌ ", Theme.yellow), Span("at login screen", Theme.yellow)]
-        case .permissions: [Span("◌ ", Theme.yellow), Span("needs permissions", Theme.yellow)]
-        case .waiting: [Span("\(spin) ", Theme.yellow), Span("waiting for guest", Theme.yellow)]
         }
         let latency = activity.last?.milliseconds.map { [Span("  \(Int($0.rounded())) ms", Theme.faint)] } ?? []
-        let blocked = stats.frames > 0 && inputBlocked && !readOnly ? [Span("  ⚠ input needs Accessibility", Theme.yellow)] : []
-        let right = (readOnly ? [Span("view only  ", Theme.faint)] : []) + state + blocked + latency + [Span(" ")]
-        var left = [Span(" ◆ terminal-mac ", Theme.badge), Span("  "), Span(machine.name, Theme.bold + Theme.text)]
-        let detail = [Span("  macOS", Theme.muted), Span(" · \(points.width)×\(points.height)", Theme.faint),
+        let right = state + latency + [Span(" ")]
+        var left = [Span(" ◆ terminal-googlebook ", Theme.badge), Span("  "), Span(machine.name, Theme.bold + Theme.text)]
+        let detail = [Span("  Googlebook OS", Theme.muted), Span(" · \(points.width)×\(points.height)", Theme.faint),
                       Span(stats.sourceWidth > 0 ? " · \(stats.sourceWidth)×\(stats.sourceHeight) px" : "", Theme.faint)]
         for count in stride(from: detail.count, through: 0, by: -1) where left.width + Array(detail.prefix(count)).width + right.width + 2 <= cols {
             left += detail.prefix(count); break
@@ -312,26 +228,7 @@ final class TerminalViewer {
             renderer.redraw()
         }
         if stats.frames == 0 {
-            let lines: [[Span]] = switch link {
-            case .login where loginWindow: [[Span("◆", Theme.accent)], [],
-                [Span(spin + " ", Theme.yellow), Span("Sign in to \(machine.name) in the VM window", Theme.text)],
-                [Span("It hides and the desktop appears here as soon as you are in", Theme.muted)]]
-            case .login: [[Span("◆", Theme.accent)], [],
-                [Span("\(machine.name) is at its login screen", Theme.bold + Theme.text)],
-                [Span("Press ", Theme.muted), Span(" ⌃O ", Theme.key), Span(" to sign in, then it continues here", Theme.muted)], [],
-                [Span("Skip this every boot: in the VM, System Settings → Users & Groups", Theme.faint)],
-                [Span("→ Automatically log in as your user (needs FileVault off)", Theme.faint)]]
-            case .permissions:
-                [[Span("◆", Theme.accent)], [],
-                 [Span("The guest helper needs two macOS permissions inside the VM", Theme.bold + Theme.text)],
-                 grantLine,
-                 [],
-                 loginWindow ? [Span(spin + " ", Theme.yellow), Span("In the VM window, click the helper's Allow buttons and switch TerminalMacGuest on", Theme.text)]
-                     : [Span("Press ", Theme.muted), Span(" ⌃O ", Theme.key), Span(" and click the helper's Allow buttons; it continues here by itself", Theme.muted)],
-                 [Span("Already on? Remove TerminalMacGuest with − and allow it again", Theme.faint)]]
-            case .waiting(let text): [[Span("◆", Theme.accent)], [], [Span(spin + " ", Theme.yellow), Span(text, Theme.text)], [Span("Ctrl+] exits", Theme.faint)]]
-            default: [[Span("◆", Theme.accent)], [], [Span(spin + " ", Theme.yellow), Span("Connecting to \(machine.name)", Theme.text)], [Span("Ctrl+] exits", Theme.faint)]]
-            }
+            let lines: [[Span]] = [[Span("◆", Theme.accent)], [], [Span(spin + " ", Theme.yellow), Span("Starting \(machine.name)", Theme.text)], [Span("Ctrl+] exits; the VM keeps running", Theme.faint)]]
             // Always paint the same block of rows, so a shorter message clears a longer one.
             for (offset, line) in (lines + Array(repeating: [], count: max(0, 8 - lines.count))).prefix(8).enumerated() {
                 let pad = max(0, (d.columns - line.width) / 2)
@@ -350,8 +247,7 @@ final class TerminalViewer {
             let fitted = toast.truncated(max(4, cols - quitHint.width - 3))
             footer += fitted + [Span(String(repeating: " ", count: max(1, cols - 1 - fitted.width - quitHint.width)))]
         } else {
-            let hints = link == .login || link == .connecting || link == .permissions || stats.frames == 0 ? [("⌃O", "open VM window")] :
-                readOnly ? [] : (inputBlocked ? [("⌃O", "allow Accessibility")] : []) + [("⌃G", "Mac shortcuts"), ("click", "click"), ("drag", "select"), ("wheel", "scroll"), ("type", "keyboard")]
+            let hints = stats.frames == 0 ? [] : [("⌃G", "system"), ("click", "click"), ("drag", "drag"), ("wheel", "scroll"), ("type", "keyboard")]
             for (key, action) in hints {
                 let item = hint(key, action)
                 if footer.width + item.width + quitHint.width > cols { break }
@@ -367,7 +263,7 @@ final class TerminalViewer {
         writer.write(output)
     }
 
-    /// A centered card of Mac shortcuts. Every cell has a background, so it covers the desktop image.
+    /// A centered card of Googlebook OS actions. Every cell has a background, so it covers the desktop image.
     private func drawPalette(_ d: DesktopPlacement) -> String {
         let surface = Theme.bg(0x1f2335), half = (Self.shortcuts.count + 1) / 2
         let cell = 24, width = min(d.columns, cell * 2 + 6), height = min(d.rows, half + 5)
@@ -383,7 +279,7 @@ final class TerminalViewer {
             output += "\u{1b}[\(row + offset);\(column + 1)H" + [Span(" ", surface)].rendered + "\u{1b}[\(row + offset);\(column + width - 2)H" + [Span(" ", surface)].rendered
         }
         output += Box.frame(column: column, row: row, width: width, height: height,
-                            title: [Span("Mac shortcuts", Theme.bold + Theme.accent)], color: surface + Theme.accent)
+                            title: [Span("Googlebook OS", Theme.bold + Theme.accent)], color: surface + Theme.accent)
         output += line(1, [])
         func item(_ s: Shortcut) -> [Span] {
             let label = [Span(" \(s.key) ", Theme.key), Span(" " + s.label, Theme.text)]
@@ -462,13 +358,11 @@ final class TerminalViewer {
         func flush() { if !text.isEmpty { enqueue("type", ["text": text], label: Self.typeLabel(text)); text = "" } }
         for event in events {
             if case .quit = event { quit = true; return }
-            if case .key("ctrl+o") = event, (link != .live && link != .snapshots) || inputBlocked { openLoginWindow(); continue }
-            guard !readOnly else { continue }
             if palette {
                 switch event {
                 case .text(let value):
                     if let shortcut = Self.shortcuts.first(where: { String($0.key) == value.lowercased() }) {
-                        enqueue("key", ["key": shortcut.chord], label: "\(shortcut.glyph) \(shortcut.label)")
+                        enqueue(shortcut.action, shortcut.arguments, label: shortcut.label)
                     }
                     setPalette(false)
                 case .key, .mouse: setPalette(false)
@@ -498,7 +392,7 @@ final class TerminalViewer {
                     guard let start = anchor, let p = point(column, row, clamp: true) else { anchor = nil; continue }
                     anchor = nil
                     if hypot(Double(p.0 - start.x), Double(p.1 - start.y)) >= 8 {
-                        enqueue("drag", ["x": String(start.x), "y": String(start.y), "x2": String(p.0), "y2": String(p.1)], label: "drag \(start.x),\(start.y) → \(p.0),\(p.1)")
+                        enqueue("drag", ["x": String(start.x), "y": String(start.y), "toX": String(p.0), "toY": String(p.1)], label: "drag \(start.x),\(start.y) → \(p.0),\(p.1)")
                     } else {
                         // A quick second click at the same spot continues a double (or triple) click.
                         var count = 1
@@ -529,4 +423,15 @@ final class TerminalViewer {
         enqueue("scroll", arguments, label: "scroll \(arrow)")
         wheel.dx = 0; wheel.dy = 0
     }
+}
+
+private func fill(_ fd: Int32, _ target: UnsafeMutableRawPointer, _ count: Int) -> Bool {
+    var offset = 0
+    while offset < count {
+        let got = read(fd, target + offset, count - offset)
+        if got < 0 && errno == EINTR { continue }
+        guard got > 0 else { return false }
+        offset += got
+    }
+    return true
 }

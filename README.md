@@ -2,7 +2,7 @@
 
 Una Googlebook virtual para agentes de IA: Googlebook OS en una VM de tu Mac Apple Silicon, sin ventana y aislada del escritorio, controlable por CLI y MCP. Une [terminal-mac](https://github.com/govijr/terminal-mac) (CLI, MCP) y [gbos-vm](https://github.com/skylartaylor/gbos-vm) (VM, GPU, helper de puntero), ambos MIT. `vm/` es gbos-vm.
 
-**Estado:** Fase 1 lista; viewer e instalador pendientes. Ver [PRD](docs/PRD.md) y [validación](docs/VALIDATION.md).
+**Estado:** Fases 1 y 2 listas; instalador pendiente. Ver [PRD](docs/PRD.md) y [validación](docs/VALIDATION.md).
 
 Hoy requiere compilar desde el repositorio, con Homebrew, Android SDK y Xcode:
 

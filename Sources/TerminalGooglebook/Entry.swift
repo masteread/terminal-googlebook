@@ -16,4 +16,5 @@ struct Entry {
     }
 }
 
-func stderr(_ message: String) { FileHandle.standardError.write(Data((message + "\n").utf8)) }
+/// No FileHandle.write: lanza una excepción de Objective-C, y aborta, si la terminal o el cliente ya se fueron.
+func stderr(_ message: String) { _ = writeAll(STDERR_FILENO, Data((message + "\n").utf8)) }

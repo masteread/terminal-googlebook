@@ -31,6 +31,15 @@ final class AgentServer {
         ["name": "click", "description": "Click at a point. clicks: 2 double-clicks.",
          "inputSchema": schema(["x": point, "y": point, "button": ["type": "string", "enum": ["left", "right"]],
                                 "clicks": ["type": "integer", "minimum": 1, "maximum": 3], "screenshot": after], required: ["x", "y"])],
+        ["name": "move", "description": "Move the pointer to a point, to hover.",
+         "inputSchema": schema(["x": point, "y": point, "screenshot": after], required: ["x", "y"])],
+        ["name": "drag", "description": "Press at (x, y), drag to (toX, toY) and release.",
+         "inputSchema": schema(["x": point, "y": point, "toX": point, "toY": point, "screenshot": after], required: ["x", "y", "toX", "toY"])],
+        ["name": "scroll", "description": "Scroll at a point. Negative dy scrolls down, positive dy up; negative dx scrolls right. One wheel notch is 60; try -300 to move a page.",
+         "inputSchema": schema(["x": point, "y": point, "dx": ["type": "integer", "minimum": -1000, "maximum": 1000], "dy": ["type": "integer", "minimum": -1000, "maximum": 1000], "screenshot": after], required: ["x", "y"])],
+        ["name": "home", "description": "Android Home button.", "inputSchema": schema(["screenshot": after])],
+        ["name": "back", "description": "Android Back button.", "inputSchema": schema(["screenshot": after])],
+        ["name": "recents", "description": "Android Recents button.", "inputSchema": schema(["screenshot": after])],
         ["name": "type", "description": "Type literal UTF-8 text into the focused field. Use `key` for enter, tab and shortcuts.",
          "inputSchema": schema(["text": ["type": "string"], "screenshot": after], required: ["text"])],
         ["name": "key", "description": "Press a key or chord: enter, esc, tab, backspace, up, down, left, right, ctrl+t, ctrl+l, ctrl+shift+tab, alt+tab. Modifiers: ctrl, alt, shift, meta.",
@@ -88,6 +97,14 @@ final class AgentServer {
             var arguments = ["x": try int("x"), "y": try int("y"), "count": String(max(1, min(3, a["clicks"] as? Int ?? 1)))]
             if a["button"] as? String == "right" { arguments["button"] = "right" }
             requests = [Request(action: "click", arguments: arguments, timeout: 15)]
+        case "move": requests = [Request(action: "move", arguments: ["x": try int("x"), "y": try int("y")], timeout: 15)]
+        case "drag": requests = [Request(action: "drag", arguments: ["x": try int("x"), "y": try int("y"), "toX": try int("toX"), "toY": try int("toY")], timeout: 15)]
+        case "scroll":
+            var arguments = ["x": try int("x"), "y": try int("y")]
+            if a["dx"] != nil { arguments["dx"] = try int("dx") }
+            if a["dy"] != nil { arguments["dy"] = try int("dy") }
+            requests = [Request(action: "scroll", arguments: arguments, timeout: 15)]
+        case "home", "back", "recents": requests = [Request(action: tool, timeout: 15)]
         case "type": requests = [Request(action: "type", arguments: ["text": try string("text")], timeout: 60)]
         case "key": requests = [Request(action: "key", arguments: ["key": try string("key")], timeout: 10)]
         case "open_url": requests = [Request(action: "open_url", arguments: ["url": try string("url")], timeout: 40)]
@@ -147,6 +164,6 @@ final class AgentServer {
     private func send(_ message: [String: Any]) {
         guard var data = try? JSONSerialization.data(withJSONObject: message, options: [.withoutEscapingSlashes]) else { return }
         data.append(10)
-        FileHandle.standardOutput.write(data)
+        _ = writeAll(STDOUT_FILENO, data)  // Ver stderr(_:): FileHandle.write abortaría si el cliente ya se fue.
     }
 }

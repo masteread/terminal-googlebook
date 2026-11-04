@@ -52,6 +52,11 @@ final class CLI {
             let runtime = try HostRuntime(machine: try store.load(name), directory: try store.directory(name), assets: assets)
             try await runtime.run()
         case "action": try await action(tail)
+        case "view":
+            let name = try Arguments(tail).machineName()
+            _ = try store.load(name)
+            guard Self.isRunning(try store.directory(name)) else { throw Failure("VM '\(name)' is stopped. Start it with: terminal-googlebook start \(name)") }
+            try await view(name)
         case "mcp":
             let args = try Arguments(tail, flags: ["config"])
             let name = try args.machineName()
@@ -106,7 +111,15 @@ final class CLI {
         } else if !args.options.isEmpty && args.options.keys.contains(where: { $0 != "timeout" }) || args.flags.contains("offline") {
             throw Failure("VM '\(name)' already exists; its resolution, memory, CPUs and network are fixed when it is created.")
         }
-        try await start(name, wait: !args.flags.contains("detach"), timeout: args.integer("timeout", default: 300, range: 1...3600))
+        let wantsViewer = !args.flags.contains("no-view") && !args.flags.contains("detach") && TerminalViewer.supportsCurrentTerminal
+        try await start(name, wait: !args.flags.contains("detach") && !wantsViewer, timeout: args.integer("timeout", default: 300, range: 1...3600), quiet: wantsViewer)
+        if wantsViewer { try await view(name) }
+    }
+
+    private func view(_ name: String) async throws {
+        let directory = try store.directory(name)
+        try await TerminalViewer(directory: directory, machine: try store.load(name)).run()
+        stderr(Self.isRunning(directory) ? "VM '\(name)' is still running. Stop it with: terminal-googlebook stop \(name == "default" ? "" : name)" : "VM '\(name)' stopped.")
     }
 
     /// Descarga la imagen de Google y arma el disco en esta máquina; nada de eso se redistribuye.
@@ -124,7 +137,7 @@ final class CLI {
         guard process.terminationStatus == 0, assets.isInstalled else { throw Failure("The VM installation failed; see the output above.") }
     }
 
-    func start(_ name: String, wait: Bool, timeout: Int) async throws {
+    func start(_ name: String, wait: Bool, timeout: Int, quiet: Bool = false) async throws {
         let directory = try store.directory(name)
         if !Self.isRunning(directory) {
             guard assets.isInstalled else { throw Failure("The VM files are missing from \(assets.work.path). Run: terminal-googlebook up \(name)") }
@@ -146,7 +159,7 @@ final class CLI {
             while !Self.isRunning(directory), Date() < deadline, process.isRunning { try await Task.sleep(nanoseconds: 50_000_000) }
             guard Self.isRunning(directory) else { throw Failure("The VM did not start: \(lastLine(log) ?? "no details"). Details: \(log.path)") }
         }
-        guard wait else { try printJSON(["name": name, "state": "starting"]); return }
+        guard wait else { if !quiet { try printJSON(["name": name, "state": "starting"]) }; return }
         let deadline = Date().addingTimeInterval(Double(timeout))
         while Date() < deadline {
             guard Self.isRunning(directory) else { throw Failure("The VM stopped while starting. Details: \(directory.path)/runtime.log") }
@@ -169,12 +182,12 @@ final class CLI {
     }
 
     func action(_ input: [String]) async throws {
-        let args = try Arguments(input, flags: ["double"], options: ["x", "y", "text", "key", "url", "button", "count", "output", "timeout"])
-        let actions: Set<String> = ["status", "screenshot", "snapshot", "click", "type", "key", "open_url"]
+        let args = try Arguments(input, flags: ["double"], options: ["x", "y", "toX", "toY", "dx", "dy", "text", "key", "url", "button", "count", "output", "timeout"])
+        let actions: Set<String> = ["status", "screenshot", "snapshot", "click", "move", "drag", "scroll", "type", "key", "home", "back", "recents", "open_url"]
         var positions = args.positionals
         let name: String
         if let first = positions.first, actions.contains(first) { name = "default" }
-        else { guard !positions.isEmpty else { throw Failure("Usage: terminal-googlebook action [NAME] screenshot|click|type|key|open_url|status") }; name = positions.removeFirst() }
+        else { guard !positions.isEmpty else { throw Failure("Usage: terminal-googlebook action [NAME] screenshot|click|move|drag|scroll|type|key|home|back|recents|open_url|status") }; name = positions.removeFirst() }
         try validateName(name)
         _ = try store.load(name)
         guard !positions.isEmpty, actions.contains(positions[0]) else { throw Failure("Unknown or missing guest action") }
@@ -185,7 +198,9 @@ final class CLI {
         if verb == "type", !positions.isEmpty { parameters["text"] = positions.joined(separator: " "); positions.removeAll() }
         if verb == "key", positions.count == 1 { parameters["key"] = positions.removeFirst() }
         if verb == "open_url", positions.count == 1 { parameters["url"] = positions.removeFirst() }
-        if verb == "click", positions.count == 2 { parameters["x"] = positions.removeFirst(); parameters["y"] = positions.removeFirst() }
+        if verb == "drag", positions.count == 4 { for key in ["x", "y", "toX", "toY"] { parameters[key] = positions.removeFirst() } }
+        if verb == "scroll", positions.count == 2 { parameters["x"] = positions.removeFirst(); parameters["y"] = positions.removeFirst() }
+        if verb == "click" || verb == "move", positions.count == 2 { parameters["x"] = positions.removeFirst(); parameters["y"] = positions.removeFirst() }
         guard positions.isEmpty else { throw Failure("Unexpected action arguments") }
         if args.flags.contains("double") { parameters["double"] = "true" }
         let fallback = verb == "open_url" ? 40 : verb == "type" ? 60 : 15
@@ -241,6 +256,7 @@ final class CLI {
     up [NAME]                   Download if needed, create and boot a VM (default name: default)
       [--width 1280 --height 800 --memory 4 --cpus 4 --offline]   Fixed when the VM is created
       [--no-view | --detach]    Wait for Android without viewing, or return right away
+    view [NAME]                 Watch and use a running VM here (Ghostty, Kitty, iTerm2). Ctrl+] leaves it running
     start [NAME] [--detach]     Boot an existing VM with no window on the host
     stop [NAME] [--force]       Shut Android down cleanly (or power off immediately)
     status [NAME]               VM, pointer helper and user picker, as JSON
@@ -249,6 +265,10 @@ final class CLI {
     action [NAME] status
     action [NAME] screenshot [--output PATH]
     action [NAME] click X Y [--button right] [--count 2]
+    action [NAME] move X Y
+    action [NAME] drag X Y TO_X TO_Y
+    action [NAME] scroll X Y --dy -120 [--dx 0]   Negative dy scrolls down
+    action [NAME] home|back|recents
     action [NAME] type 'text'
     action [NAME] key ctrl+t
     action [NAME] open_url https://example.com
