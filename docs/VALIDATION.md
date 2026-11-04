@@ -9,7 +9,7 @@ Resultados reales. Una sola Mac hasta ahora: M5, 16 GB, macOS 27.0.1. El criteri
 | 3. Claude Code solo con el plugin, sin intervención | **Pasó**, en una Mac no limpia | `claude -p --plugin-dir` con solo las tools del plugin, sobre un Chrome nunca abierto: 44 s, 15 turnos, 0.67 USD. Pasó solo los diálogos de Chrome y llegó al artículo. Ver `evidencia/fase-1-agente.jpg`. Repetido en la Fase 3 con una tarea más larga (ver abajo) |
 | 4. Host intacto | **Parcial** | 0 ventanas de la VM en el host y el hash del clipboard no cambió. El puntero del host no se pudo medir: la Mac estaba en uso durante la prueba. El código no llama a ninguna API de input o pantalla del host |
 | 5. `stop` limpio y `start` recupera el estado | **Pasó** | Apagado en 4 s con código 0; las pestañas de Chrome siguen tras `start` |
-| 6. MIT, público, dos Macs | Pendiente | Privado; sin segunda Mac |
+| 6. MIT, público, dos Macs | **Parcial** | MIT y público. Falta validar en una segunda Mac |
 
 ## Fase 1: otras comprobaciones
 
@@ -71,7 +71,7 @@ Con un cliente MCP real y el viewer en una pty de iTerm2: `view` espera con la V
 
 ### Desviaciones del PRD
 
-- **Tool `start` y puntero del agente:** el PRD no los pide. Se agregaron, para que un agente encienda su máquina y un dev lo vea en vivo. La tool no descarga: la primera vez pide al usuario correr `up`.
+- **Tool `start` y puntero del agente:** el PRD no los pide. Se agregaron para que un agente encienda su máquina y un dev lo vea en vivo. La tool no descarga: la primera vez pide al usuario correr `up`.
 - **Release sin identidad:** el PRD pide un release firmado. Se usa firma ad-hoc y el SHA-256 de `get.sh`. Sin notarizar, macOS rechaza el zip bajado con el navegador; por eso se instala con `curl`. No se ha comprobado en una Mac que nunca lo haya visto.
 - **Licencias:** el paquete incluye binarios GPL y LGPL, no solo MIT y Apache-2.0. Ver `THIRD_PARTY.md`. Sus fuentes se adjuntan al release. Es una revisión técnica, no legal: conviene una revisión legal antes de hacerlo público.
 

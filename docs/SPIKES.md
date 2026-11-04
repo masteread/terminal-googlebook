@@ -1,6 +1,6 @@
 # Fase 0: resultado de los spikes
 
-El PRD pedía los tres aprobados antes de la Fase 1. Se avanzó con el 0.3 parcial, al no haber segunda Mac.
+El PRD pedía los tres aprobados antes de la Fase 1. Se avanzó con el 0.3 parcial, al no haber entonces una segunda Mac.
 
 | Spike | Estado | Evidencia |
 | --- | --- | --- |
