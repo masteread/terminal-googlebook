@@ -51,17 +51,12 @@ public struct Machine: Codable {
     public var name: String
     public var cpu: Int
     public var memoryGiB: Int
-    public var diskGiB: Int
     public var width: Int
     public var height: Int
     public var network: Bool
-    public var installed: Bool
-    /// 2 renders the guest at Retina density: twice the pixels for the same point size. Older VMs have none.
-    public var scale: Int?
-    public var displayScale: Int { scale == 2 ? 2 : 1 }
-    public init(name: String, cpu: Int, memoryGiB: Int, diskGiB: Int, width: Int = 1280, height: Int = 800, network: Bool = true, installed: Bool = false, scale: Int? = nil) {
-        self.name = name; self.cpu = cpu; self.memoryGiB = memoryGiB; self.diskGiB = diskGiB
-        self.width = width; self.height = height; self.network = network; self.installed = installed; self.scale = scale
+    public init(name: String, cpu: Int = 4, memoryGiB: Int = 4, width: Int = 1280, height: Int = 800, network: Bool = true) {
+        self.name = name; self.cpu = cpu; self.memoryGiB = memoryGiB
+        self.width = width; self.height = height; self.network = network
     }
 }
 
@@ -88,8 +83,8 @@ public struct Reply: Codable {
 public struct Store {
     public let root: URL
     public init(root: URL? = nil) {
-        self.root = root ?? ProcessInfo.processInfo.environment["TERMINAL_MAC_HOME"].map { URL(fileURLWithPath: $0) }
-            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/terminal-mac")
+        self.root = root ?? ProcessInfo.processInfo.environment["TERMINAL_GOOGLEBOOK_HOME"].map { URL(fileURLWithPath: $0) }
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/terminal-googlebook")
     }
     public func directory(_ name: String) throws -> URL {
         try validateName(name)
@@ -97,8 +92,13 @@ public struct Store {
     }
     public func load(_ name: String) throws -> Machine {
         let url = try directory(name).appendingPathComponent("machine.json")
-        guard FileManager.default.fileExists(atPath: url.path) else { throw Failure("VM '\(name)' does not exist. Run terminal-mac create \(name) --ipsw /path/to/restore.ipsw") }
+        guard FileManager.default.fileExists(atPath: url.path) else { throw Failure("VM '\(name)' does not exist. Run: terminal-googlebook up \(name)") }
         return try JSONDecoder().decode(Machine.self, from: Data(contentsOf: url))
+    }
+    /// Los sockets Unix admiten 103 bytes; el más largo de la VM es serial.sock.
+    public func checkSocketLength(_ name: String) throws {
+        let longest = try directory(name).appendingPathComponent("serial.sock").path
+        guard longest.utf8.count < 104 else { throw Failure("The path for VM '\(name)' is too long for its control sockets. Use a shorter name.") }
     }
     public func save(_ machine: Machine) throws {
         let data = try JSONEncoder().encode(machine)

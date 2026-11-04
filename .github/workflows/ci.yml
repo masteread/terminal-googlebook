@@ -17,9 +17,5 @@ jobs:
         run: swift test
       - name: Build (ad-hoc signed)
         run: SIGN_IDENTITY=- bash scripts/build.sh
-      - name: Package checks
-        run: |
-          VERSION=0.0.0 BUILD_NUMBER=1 GITHUB_REPO= bash scripts/release.sh --local
-          bash scripts/test-package.sh "$PWD/dist/releases/terminal-mac-0.0.0-1-macos-arm64-local.zip"
       - name: Plugin manifest
         run: python3 -c "import json; [json.load(open(f)) for f in ('.claude-plugin/plugin.json', '.claude-plugin/marketplace.json')]"

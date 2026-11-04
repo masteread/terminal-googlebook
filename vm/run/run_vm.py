@@ -2,11 +2,14 @@
 """Run the Googlebook VM once with an explicit QEMU command line.
 
   run_vm.py WORK RUN_NAME [--seconds N] [--snapshot] [--offline] [--no-audio] [--no-bluetooth]
-            [--display WxH] [--memory MIB] [--cpus N]
+            [--display WxH] [--memory MIB] [--cpus N] [--no-mouse] [--run-dir DIR]
 
 WORK is the build folder (host/, image/, UTM-beta/). Logs and sockets go to WORK/logs/RUN_NAME.
+--run-dir puts them in DIR instead. --seconds 0 means no time limit. --no-mouse leaves out the USB
+mouse, for hosts that only drive the guest through the helper (it would draw a second cursor).
 The disk is written to unless --snapshot is given. Networking is QEMU user-mode NAT with no
-inbound forwards; --offline removes it (the pointer/clipboard helper then cannot connect).
+inbound forwards; --offline cuts the guest off from the internet and the host, except for the
+one forward the pointer/clipboard helper needs.
 On stop, Android is asked to power off through the guest control channel before QEMU is killed.
 
 Bluetooth: if the Android emulator's netsimd is installed (SDK "emulator" package, or set
@@ -69,9 +72,10 @@ def main():
     a.add_argument('--display', default='1920x1200'); a.add_argument('--memory', type=int, default=4096)
     a.add_argument('--cpus', type=int, default=6)
     a.add_argument('--image', help='image folder (default WORK/image)')
+    a.add_argument('--no-mouse', action='store_true'); a.add_argument('--run-dir')
     args = a.parse_args()
     work = Path(args.work).resolve()
-    assert args.name.replace('-', '').replace('_', '').isalnum() and 10 <= args.seconds <= 86400
+    assert args.name.replace('-', '').replace('_', '').isalnum() and (args.seconds == 0 or 10 <= args.seconds <= 86400)
     image = Path(args.image).resolve() if args.image else work / 'image'
     host, utm = work / 'host', work / 'UTM-beta/UTM.app'
     for p in (host / 'qemu-interop', host / 'qemu-aarch64-softmmu', host / 'virgl_render_server',
@@ -82,7 +86,8 @@ def main():
     lock = (work / 'logs/vm.lock').open('a')
     try: fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError: sys.exit('another VM from this folder is already running')
-    out = work / 'logs' / args.name; out.mkdir()
+    out = Path(args.run_dir).resolve() if args.run_dir else work / 'logs' / args.name
+    out.mkdir(parents=True, exist_ok=bool(args.run_dir))
     # Random per-boot secret for the pointer/clipboard link (see guest/input).
     token = secrets.token_hex(16)
     (out / 'token').write_text(token); os.chmod(out / 'token', 0o600)
@@ -104,15 +109,16 @@ def main():
            '-drive', f'if=none,media=disk,id=driveimage,format=raw,file={image / "googlebook.raw"}',
            '-device', 'virtio-blk-pci,drive=driveimage', '-device', 'virtio-serial', '-no-reboot',
            '-device', 'qemu-xhci,id=xhci,addr=0x5', '-device', 'usb-kbd,id=keyboard,bus=xhci.0',
-           '-device', 'usb-mouse,id=mouse,bus=xhci.0',
+           *([] if args.no_mouse else ['-device', 'usb-mouse,id=mouse,bus=xhci.0']),
            '-display', 'none',
            '-spice', 'unix=on,addr=spice.sock,disable-ticketing=on,disable-copy-paste=on,disable-agent-file-xfer=on,gl=es',
            '-chardev', 'socket,id=serial0,path=serial.sock,server=on,wait=off,logfile=serial.log',
            '-serial', 'chardev:serial0', '-qmp', 'unix:qmp.sock,server=on,wait=off']
     if args.snapshot: cmd.append('-snapshot')
-    if not args.offline:
-        cmd += ['-netdev', 'user,id=googlebooknet,ipv6=off',
-                '-device', 'usb-net,id=ethernet,netdev=googlebooknet,bus=xhci.0,mac=52:54:00:12:34:56']
+    # The helper dials 10.0.2.2, so offline moves the gateway away from that address to forward it.
+    netdev = ('user,id=googlebooknet,ipv6=off,restrict=on,net=10.0.2.0/24,host=10.0.2.3,dns=10.0.2.4,'
+              'guestfwd=tcp:10.0.2.2:27183-cmd:/usr/bin/nc 127.0.0.1 27183') if args.offline else 'user,id=googlebooknet,ipv6=off'
+    cmd += ['-netdev', netdev, '-device', 'usb-net,id=ethernet,netdev=googlebooknet,bus=xhci.0,mac=52:54:00:12:34:56']
     if netsim:
         # /dev/hvc0 in the guest; the Bluetooth service there speaks HCI over it.
         cmd += ['-chardev', f'socket,id=bluetooth,host=127.0.0.1,port={bt_port},reconnect-ms=500',
@@ -132,7 +138,7 @@ def main():
         def interrupt(signum, frame): raise KeyboardInterrupt
         signal.signal(signal.SIGTERM, interrupt)
         rc = None
-        try: rc = proc.wait(timeout=args.seconds)
+        try: rc = proc.wait(timeout=args.seconds or None)
         except (subprocess.TimeoutExpired, KeyboardInterrupt): pass
         finally:
             if proc.poll() is None:

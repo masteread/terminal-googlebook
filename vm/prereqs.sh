@@ -8,7 +8,7 @@
 # line tools and Homebrew itself need you: it prints the command.
 . "$(dirname "$0")/lib.sh"
 MODE="${1:-ask}"
-BREW_FORMULAE="erofs-utils e2fsprogs lz4 pkgconf"
+BREW_FORMULAE="erofs-utils e2fsprogs lz4 pkgconf python@3.13"
 SDK_BUILD_TOOLS="build-tools;36.0.0"; SDK_PLATFORM="platforms;android-36"
 
 missing=(); manual=()

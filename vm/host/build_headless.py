@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Compila spikes/headless.m con los mismos fuentes y bibliotecas que el viewer de gbos-vm.
-Uso: build_headless.py WORK   (salida: WORK/host/headless)"""
+"""Build host/headless.m with the same sources and libraries as the viewer.
+Usage: build_headless.py WORK   (output: WORK/host/headless)"""
 import subprocess, sys
 from pathlib import Path
 
@@ -17,7 +17,8 @@ cmd += [str(p) for p in sorted((S / 'CocoaSpice').glob('*.m')) if p.name not in 
 for n in ('AppKit', 'Metal', 'CoreGraphics', 'CoreImage', 'IOSurface', 'CoreVideo'): cmd += ['-framework', n]
 for n in ('spice-client-glib-2.0.8', 'glib-2.0.0', 'gobject-2.0.0', 'gio-2.0.0', 'gstreamer-1.0.0'):
     cmd.append(str(fw / (n + '.framework') / n))
-cmd += ['-Wl,-rpath,' + str(fw), '-o', str(out)]
+# Second rpath: relative, so the whole work folder can be moved.
+cmd += ['-Wl,-rpath,' + str(fw), '-Wl,-rpath,@executable_path/../UTM-beta/UTM.app/Contents/Frameworks', '-o', str(out)]
 subprocess.run(cmd, check=True)
 subprocess.run(['codesign', '--force', '--sign', '-', str(out)], check=True, capture_output=True)
 print(out)

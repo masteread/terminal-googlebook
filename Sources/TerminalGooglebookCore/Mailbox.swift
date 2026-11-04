@@ -2,16 +2,16 @@ import Foundation
 import Darwin
 
 /// A request nobody answered in time. `pickedUp` is false when the request file was never even
-/// read: no helper is running, for example because the guest is still at its login screen.
+/// read: the VM's host process is not running.
 public struct MailboxTimeout: LocalizedError {
     public let action: String
     public let pickedUp: Bool
     public var errorDescription: String? {
-        "Timed out waiting for \(action). Ensure the VM is running and the guest helper is open in its logged-in desktop."
+        "Timed out waiting for \(action). Check that the VM is running."
     }
 }
 
-/// Flat virtio-fs mailbox. No network listener, credentials, or executable guest responses.
+/// Flat local mailbox between the CLI or MCP server and the VM's host process. No network listener.
 /// Pin the directory and reject symlinks for every exchanged file.
 public final class Mailbox {
     private let fd: Int32

@@ -1,6 +1,9 @@
-// Spike 0.1: cliente SPICE sin ventana. Reutiliza CSConnection y CSDisplay de CocoaSpice, con un
-// renderer que no dibuja nada: confirma cada frame para liberar al servidor y deja la textura lista.
-//   headless /ruta/absoluta/spice.sock CARPETA SEGUNDOS
+// SPICE client with no window. Reuses CocoaSpice's CSConnection and CSDisplay with a renderer that
+// draws nothing: it acknowledges each frame to release the server and leaves the texture ready.
+// It must connect at boot and stay connected for the VM's whole life: a client that reconnects to
+// a running VM gets no scanout until the guest allocates a new one.
+//   headless /absolute/path/spice.sock
+// stdin:  "shot /absolute/path.png"     stdout: "FRAME ok WIDTH HEIGHT" or "FRAME err REASON"
 #import <AppKit/AppKit.h>
 #import <stdatomic.h>
 #import "CocoaSpice.h"
@@ -30,33 +33,24 @@ static atomic_ulong frames;
 @property(nonatomic,strong) CSConnection *connection;
 @property(nonatomic,strong) NullRenderer *renderer;
 @property(nonatomic,strong) CSDisplay *display;
-@property(nonatomic,strong) NSString *folder;
-@property(nonatomic) int seconds, index;
 @end
 @implementation Client
-- (void)capture {
-  if (self.index >= self.seconds) { fprintf(stderr, "HEADLESS done frames=%lu\n", (unsigned long)frames); exit(0); }
-  int i = self.index++;
-  double t = CFAbsoluteTimeGetCurrent(); unsigned long seen = frames;
+- (void)shot:(NSString *)path {
+  if (!self.display) { printf("FRAME err no-display\n"); fflush(stdout); return; }
   [self.display screenshotWithCompletion:^(CSScreenshot *shot) {
-    NSData *tiff = shot.image.TIFFRepresentation;
-    NSData *png = tiff ? [[NSBitmapImageRep imageRepWithData:tiff] representationUsingType:NSBitmapImageFileTypePNG properties:@{}] : nil;
-    NSString *path = [self.folder stringByAppendingPathComponent:[NSString stringWithFormat:@"frame-%04d.png", i]];
-    [png writeToFile:path atomically:YES];
-    fprintf(stderr, "HEADLESS shot=%d bytes=%lu ms=%.0f frames=%lu\n", i, (unsigned long)png.length, (CFAbsoluteTimeGetCurrent() - t) * 1000, seen);
+    NSBitmapImageRep *rep = shot.image.TIFFRepresentation ? [NSBitmapImageRep imageRepWithData:shot.image.TIFFRepresentation] : nil;
+    NSData *png = rep ? [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}] : nil;
+    if (png && [png writeToFile:path atomically:YES]) printf("FRAME ok %ld %ld\n", (long)rep.pixelsWide, (long)rep.pixelsHigh);
+    else printf("FRAME err no-frame\n");
+    fflush(stdout);
   }];
-  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{ [self capture]; });
 }
 - (void)spiceDisplayCreated:(CSConnection *)c display:(CSDisplay *)d {
-  dispatch_async(dispatch_get_main_queue(), ^{
-    self.display = d; [d addRenderer:self.renderer];
-    fprintf(stderr, "HEADLESS display %.0fx%.0f GL=%d\n", d.displaySize.width, d.displaySize.height, d.isGLEnabled);
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ [self capture]; });
-  });
+  dispatch_async(dispatch_get_main_queue(), ^{ self.display = d; [d addRenderer:self.renderer]; });
 }
-- (void)spiceConnected:(CSConnection *)c { fprintf(stderr, "HEADLESS connected\n"); }
-- (void)spiceDisconnected:(CSConnection *)c { fprintf(stderr, "HEADLESS disconnected\n"); exit(3); }
-- (void)spiceError:(CSConnection *)c code:(CSConnectionError)code message:(NSString *)m { fprintf(stderr, "HEADLESS error %s\n", m.UTF8String); exit(4); }
+- (void)spiceConnected:(CSConnection *)c {}
+- (void)spiceDisconnected:(CSConnection *)c { exit(3); }
+- (void)spiceError:(CSConnection *)c code:(CSConnectionError)code message:(NSString *)m { fprintf(stderr, "SPICE error %s\n", m.UTF8String); exit(4); }
 - (void)spiceDisplayUpdated:(CSConnection *)c display:(CSDisplay *)d {}
 - (void)spiceDisplayDestroyed:(CSConnection *)c display:(CSDisplay *)d {}
 - (void)spiceInputAvailable:(CSConnection *)c input:(CSInput *)i {}
@@ -68,14 +62,22 @@ static atomic_ulong frames;
 @end
 
 int main(int argc, char **argv) {
-  if (argc != 4) { fprintf(stderr, "uso: headless SPICE_SOCK CARPETA SEGUNDOS\n"); return 2; }
+  if (argc != 2) { fprintf(stderr, "usage: headless SPICE_SOCK\n"); return 2; }
   static Client *client; client = [Client new];
   client.renderer = [NullRenderer new];
-  client.folder = [NSString stringWithUTF8String:argv[2]]; client.seconds = atoi(argv[3]);
-  [NSFileManager.defaultManager createDirectoryAtPath:client.folder withIntermediateDirectories:YES attributes:nil error:nil];
-  if (![CSMain.sharedInstance spiceStart]) { fprintf(stderr, "SPICE no arrancó\n"); return 1; }
+  if (![CSMain.sharedInstance spiceStart]) { fprintf(stderr, "SPICE worker failed\n"); return 1; }
   client.connection = [[CSConnection alloc] initWithUnixSocketFile:[NSURL fileURLWithPath:[NSString stringWithUTF8String:argv[1]]]];
   client.connection.audioEnabled = NO; client.connection.session.shareClipboard = NO; client.connection.delegate = client;
   [client.connection connect];
+  dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT, 0), ^{
+    char *line = NULL; size_t capacity = 0; ssize_t length;
+    while ((length = getline(&line, &capacity, stdin)) > 0) {
+      if (line[length - 1] == '\n') line[length - 1] = 0;
+      if (strncmp(line, "shot ", 5)) continue;
+      NSString *path = [NSString stringWithUTF8String:line + 5];
+      dispatch_async(dispatch_get_main_queue(), ^{ [client shot:path]; });
+    }
+    exit(0);  // the host process went away
+  });
   dispatch_main();
 }

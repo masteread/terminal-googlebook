@@ -75,6 +75,7 @@ checkout "$COCOASPICE_REPO" "$COCOASPICE_COMMIT" "$WORK/src/CocoaSpice"
 apply_patch "$WORK/src/CocoaSpice" "$ROOT/patches/cocoaspice-viewer.patch"
 rm -rf "$WORK/host/Googlebook Viewer.app"
 python3 "$ROOT/host/build_viewer.py" "$WORK/src/CocoaSpice" "$FW" "$ROOT/host/viewer.m" "$WORK/host" "$ROOT/run" "$WORK" >/dev/null
+python3 "$ROOT/host/build_headless.py" "$WORK" >/dev/null
 
 say "Host build complete: $WORK/host"
 ls -l "$WORK/host"

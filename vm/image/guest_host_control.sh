@@ -34,6 +34,16 @@ handle() {
       timeout 8 logcat -d -t 3000 2>/dev/null | grep -i -E 'AHAL|alsa|usbaudio|UsbAlsa|audio_hw|pcm_|StreamUsb|ModuleUsb' | tail -40 | cut -c1-200 | sed 's/^/VM_CONTROL alog /'
       timeout 5 cmd audio help 2>&1 | head -25 | cut -c1-140 | sed 's/^/VM_CONTROL cmdaudio /'
       ls /product/media/audio/ringtones /system/media/audio/ringtones /product/media/audio/ui /system/media/audio/ui 2>/dev/null | head -12 | sed 's/^/VM_CONTROL media /' ;;
+    VM_OPEN_URL\ *)
+      u=$(timeout 5 am get-current-user)
+      url=$(printf %s "${line#VM_OPEN_URL }" | base64 -d 2>/dev/null)
+      if [ "$u" = 0 ]; then echo "VM_CONTROL open_url picker"
+      else
+        case "$url" in
+          http://*|https://*) echo "VM_CONTROL open_url $(timeout 10 am start --user "$u" -a android.intent.action.VIEW -d "$url" -p com.android.chrome 2>&1 | tr '\n' ' ' | cut -c1-240)" ;;
+          *) echo "VM_CONTROL open_url Error: not a web URL" ;;
+        esac
+      fi ;;
     VM_PLAY_TEST)
       u=$(timeout 5 am get-current-user)
       for f in /product/media/audio/ringtones/*.ogg /system/media/audio/ringtones/*.ogg /product/media/audio/alarms/*.ogg /system/media/audio/alarms/*.ogg; do [ -f "$f" ] && break; done

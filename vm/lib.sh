@@ -3,6 +3,8 @@ set -Eeuo pipefail
 # Never stop without saying where: any command that ends the script prints its location.
 trap 'rc=$?; [ "$BASH_SUBSHELL" -gt 0 ] || printf "error: %s stopped at line %s (exit %s)\n" "${BASH_SOURCE[0]##*/}" "$LINENO" "$rc" >&2' ERR
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+# The build needs Python 3.10 or newer (meson), and the one in the Xcode tools is 3.9.
+for python_dir in /opt/homebrew/opt/python@3.13/libexec/bin; do [ -x "$python_dir/python3" ] && export PATH="$python_dir:$PATH"; done
 WORK="${GOOGLEBOOK_WORK:-$ROOT/work}"
 # UTM 5.0.6 beta app bundle: supplies QEMU and the epoxy, Vulkan, MoltenVK and ANGLE frameworks.
 UTM_BETA_APP="${UTM_BETA_APP:-$WORK/UTM-beta/UTM.app}"

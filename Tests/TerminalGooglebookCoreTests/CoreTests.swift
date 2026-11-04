@@ -1,24 +1,32 @@
 import XCTest
 import Foundation
 import Darwin
-@testable import TerminalMacCore
+@testable import TerminalGooglebookCore
 
 final class CoreTests: XCTestCase {
-    func testFirstRunPlansSkipDownloadAndInstallForExistingMacs() {
-        let machine = Machine(name: "work", cpu: 4, memoryGiB: 4, diskGiB: 64, installed: true)
-        XCTAssertEqual(SetupPlan(name: "work", machine: machine, hasLocalImage: false).steps,
-                       ["start-or-resume-vm", "check-guest-helper-and-permissions", "open-terminal-view-if-supported"])
-        XCTAssertEqual(SetupPlan(name: "work", machine: nil, hasLocalImage: true).steps.first, "install-macos")
-        XCTAssertEqual(SetupPlan(name: "work", machine: nil, hasLocalImage: false).steps.first, "download-or-reuse-apple-restore-image")
-        var partial = machine; partial.installed = false
-        XCTAssertTrue(SetupPlan(name: "work", machine: partial, hasLocalImage: true).steps.contains("retry-incomplete-installation"))
+    func testChordsMapToQcodes() throws {
+        XCTAssertEqual(try GuestInput.chord("ctrl+t"), ["ctrl", "t"])
+        XCTAssertEqual(try GuestInput.chord("enter"), ["ret"])
+        XCTAssertEqual(try GuestInput.chord("ESC"), ["esc"])
+        XCTAssertEqual(try GuestInput.chord("ctrl+shift+tab"), ["ctrl", "shift", "tab"])
+        XCTAssertEqual(try GuestInput.chord("f5"), ["f5"])
+        XCTAssertThrowsError(try GuestInput.chord("hyper+t"))
+        XCTAssertThrowsError(try GuestInput.chord(""))
     }
-    func testGuestReadinessRequiresBothPermissions() {
-        XCTAssertEqual(GuestReadiness(nil), .unavailable)
-        XCTAssertEqual(GuestReadiness([:]), .permissions)
-        XCTAssertEqual(GuestReadiness(["screenRecording": "true", "accessibility": "false"]), .permissions)
-        XCTAssertEqual(GuestReadiness(["screenRecording": "false", "accessibility": "true"]), .permissions)
-        XCTAssertEqual(GuestReadiness(["screenRecording": "true", "accessibility": "true"]), .ready)
+    func testTypingSeparatesKeysFromPastedUnicode() {
+        XCTAssertEqual(GuestInput.runs("aB1 ?"), [.keys([["a"], ["shift", "b"], ["1"], ["spc"], ["shift", "slash"]])])
+        XCTAssertEqual(GuestInput.runs("mañana"), [.keys([["m"], ["a"]]), .paste("ñ"), .keys([["a"], ["n"], ["a"]])])
+        XCTAssertEqual(GuestInput.runs("日本"), [.paste("日本")])
+        XCTAssertEqual(GuestInput.runs("a\n"), [.keys([["a"], ["ret"]])])
+    }
+    func testEveryPrintableASCIICharacterHasKeys() {
+        for value in 32...126 { XCTAssertNotNil(GuestInput.keys(for: Character(UnicodeScalar(UInt8(value)))), "\(value)") }
+    }
+    func testOnlyWebURLsCanBeOpened() throws {
+        XCTAssertEqual(try GuestInput.validatedURL("https://example.com/a?b=1"), "https://example.com/a?b=1")
+        for bad in ["file:///etc/passwd", "javascript:alert(1)", "example.com", "https://a b.com", "https://a.com\nx", "chrome://settings", "https://ñ.com"] {
+            XCTAssertThrowsError(try GuestInput.validatedURL(bad), bad)
+        }
     }
     func testSetupLockPreventsConcurrentInstallAndReleases() throws {
         let path = try temporary().appendingPathComponent("setup.lock")
@@ -36,7 +44,7 @@ final class CoreTests: XCTestCase {
         XCTAssertThrowsError(try FileLock(link))
     }
     func temporary() throws -> URL {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("terminal-mac-tests-\(UUID().uuidString)")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("terminal-googlebook-tests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: url) }
         return url
@@ -45,7 +53,7 @@ final class CoreTests: XCTestCase {
         for name in ["../host", "/tmp", "", ".", "a/b", "a b", String(repeating: "x", count: 49)] {
             XCTAssertThrowsError(try validateName(name))
         }
-        for name in ["default", "agent-1", "mac_test", "M2"] { XCTAssertNoThrow(try validateName(name)) }
+        for name in ["default", "agent-1", "gb_test", "M2"] { XCTAssertNoThrow(try validateName(name)) }
     }
     func testParserRejectsUnknownDuplicateAndMissingOptions() throws {
         XCTAssertThrowsError(try Arguments(["--force"], flags: ["offline"]))

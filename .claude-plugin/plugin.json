@@ -1,13 +1,13 @@
 {
-  "name": "terminal-mac",
-  "version": "0.2.0",
-  "description": "Computer use in a separate virtual Mac: screenshot, click, type and shortcut tools plus a skill for driving the guest. Requires the terminal-mac CLI on PATH.",
-  "author": { "name": "Govijr", "url": "https://github.com/govijr" },
-  "homepage": "https://github.com/govijr/terminal-mac",
-  "repository": "https://github.com/govijr/terminal-mac",
+  "name": "terminal-googlebook",
+  "version": "0.1.0",
+  "description": "Computer use in a separate virtual Googlebook: screenshot, click, type, key and open_url tools plus a skill for driving the guest. Requires the terminal-googlebook CLI on PATH.",
+  "author": { "name": "Eduardo Aguirre", "url": "https://github.com/masteread" },
+  "homepage": "https://github.com/masteread/terminal-googlebook",
+  "repository": "https://github.com/masteread/terminal-googlebook",
   "license": "MIT",
-  "keywords": ["computer-use", "macos", "virtual-machine", "mcp"],
+  "keywords": ["computer-use", "googlebook", "android", "virtual-machine", "mcp"],
   "mcpServers": {
-    "terminal-mac": { "command": "terminal-mac", "args": ["mcp"] }
+    "terminal-googlebook": { "command": "terminal-googlebook", "args": ["mcp"] }
   }
 }

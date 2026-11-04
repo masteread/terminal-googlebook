@@ -1,17 +1,17 @@
 {
-  "name": "terminal-mac",
+  "name": "terminal-googlebook",
   "owner": {
-    "name": "Govijr",
-    "url": "https://github.com/govijr"
+    "name": "Eduardo Aguirre",
+    "url": "https://github.com/masteread"
   },
   "metadata": {
-    "description": "Computer use in a separate virtual Mac for coding agents."
+    "description": "Computer use in a separate virtual Googlebook for coding agents."
   },
   "plugins": [
     {
-      "name": "terminal-mac",
+      "name": "terminal-googlebook",
       "source": "./",
-      "description": "Computer use in a separate virtual Mac, with MCP tools and an agent skill."
+      "description": "Computer use in a separate virtual Googlebook, with MCP tools and an agent skill."
     }
   ]
 }
