@@ -1,42 +1,88 @@
 # terminal-googlebook
 
-Una Googlebook virtual para agentes de IA: Googlebook OS en una VM de tu Mac Apple Silicon, sin ventana y aislada del escritorio, controlable por CLI y MCP.
+Give your AI agent its own computer. terminal-googlebook runs Googlebook OS in a VM on your Apple silicon Mac, with no VM window and separate from your desktop. Agents control it through a CLI or MCP, and you watch them live in your terminal.
 
-**Estado:** Fases 1 a 3 listas; validado en una sola Mac, falta una segunda. Ver [PRD](docs/PRD.md) y [validación](docs/VALIDATION.md).
+**Status:** early release, tested end to end on one Mac. See [Known limitations](#known-limitations).
 
-## Proyectos originales
+## Quick start
 
-Este proyecto existe gracias a dos proyectos MIT:
-
-- [terminal-mac](https://github.com/govijr/terminal-mac), de Govijr: el proyecto original, que corre macOS entero en tu terminal. De ahí vienen la CLI, el servidor MCP y el viewer.
-- [gbos-vm](https://github.com/skylartaylor/gbos-vm), de Skylar Taylor: la VM de Googlebook OS en Mac, con GPU y helper de puntero. `vm/` es gbos-vm.
-
-## Instalar
-
-Requiere Apple Silicon, macOS 26 o superior, 16 GB de RAM y 60 GB libres. No pide `sudo`, Xcode ni Homebrew.
+You need Apple silicon, macOS 26 or later, 16 GB of RAM, 60 GB of free disk, and one of [iTerm2](https://iterm2.com), [Ghostty](https://ghostty.org) or [Kitty](https://sw.kovidgoyal.net/kitty/) to watch the VM. You don't need `sudo`, Xcode or Homebrew.
 
 ```bash
 curl -fsSL https://github.com/masteread/terminal-googlebook/releases/latest/download/get.sh | bash
+~/.local/bin/terminal-googlebook doctor    # checks this Mac
+~/.local/bin/terminal-googlebook setup     # one time: about 9 GB, usually 30 to 60 minutes
 ```
 
-Instala en `~/.local` y no toca tu shell: si `~/.local/bin` no está en tu `PATH`, agrégalo. Usa `curl`: el paquete tiene firma ad-hoc, sin notarizar, y macOS lo rechaza si lo bajas con el navegador. `get.sh` verifica su SHA-256.
-
-## Usar
+The installer puts everything in `~/.local` and doesn't change your shell. The commands below assume `~/.local/bin` is on your `PATH`. If it isn't, add it:
 
 ```bash
-terminal-googlebook doctor                # comprueba esta Mac
-terminal-googlebook setup                 # descarga unos 9 GB de Google y UTM; si se corta, córrelo otra vez
-terminal-googlebook up                    # abre el viewer
-terminal-googlebook action open_url https://example.com
-terminal-googlebook action screenshot --output /tmp/guest.png
-terminal-googlebook stop
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
 ```
 
-Solo puede correr una VM a la vez.
+If `setup` stops, run it again: it continues where it left off.
 
-## Compilar desde el repositorio
+Use `curl` to install. The package is ad-hoc signed and not notarized, so macOS rejects it if you download it with a browser. `get.sh` verifies its SHA-256.
 
-Requiere Homebrew, Android SDK y Xcode:
+## Give it to Claude Code
+
+```bash
+terminal-googlebook connect
+```
+
+Then, in any new Claude Code conversation, say "open your computer" in any language, or use the slash command:
+
+```
+/googlebook Find tickets for a concert in Mexico City and tell me the prices. Stop before choosing seats, signing in or paying.
+```
+
+Claude can also choose the computer by itself for tasks that need clicking through a real website.
+
+Claude turns the VM on and opens a terminal window so you can watch it live. You see the screen, the agent's pointer with a ring on each click, and its latest action in the footer. You can also use the VM yourself.
+
+The first time:
+
+- Without `/googlebook`, Claude Code asks for permission once. Choose not to be asked again.
+- With iTerm2, macOS may ask for Automation permission.
+
+While the skill is active, Claude clicks and types in the VM without asking each time. It never controls your Mac.
+
+For other MCP clients and for agents installing this themselves, see [docs/AGENT.md](docs/AGENT.md).
+
+## Use it yourself
+
+```bash
+terminal-googlebook up       # boots the VM and opens the viewer
+terminal-googlebook view     # opens the viewer; waits if the VM is off
+terminal-googlebook action open_url https://example.com
+terminal-googlebook action screenshot --output /tmp/guest.png
+terminal-googlebook stop     # shuts the VM down
+```
+
+`Ctrl+]` closes the viewer and leaves the VM running. Only one VM can run at a time on each Mac. Run `terminal-googlebook help` for every command.
+
+## Safety
+
+Don't use this VM for accounts or sensitive data:
+
+- It has no secure hardware.
+- It isn't hardened against hostile code.
+- Unless you create it with `--offline`, it has internet access and can reach services on your Mac and your local network.
+
+## Known limitations
+
+- **Barely tested on other Macs:** the full flow has only been completed on one Mac. A second Mac installed the program but stopped at the disk check.
+- **Chrome window can disappear:** in 2 of 3 agent runs, the Chrome window left the screen while Chrome stayed active in the dock. The cause is unknown.
+- **Lost keystrokes:** typing right after opening a window can lose characters. Agents should click the field and check the result.
+- **Long sessions:** an 8-hour stability test hasn't been completed.
+- **Live window:** opening it automatically has only been tested in iTerm2, not Ghostty or Kitty. The viewer doesn't work in macOS Terminal or inside tmux.
+- **Disk use:** one used test install reached 71 GB, more than the 60 GB the setup check asks for.
+
+Bug reports and pull requests are welcome. The [PRD](docs/PRD.md), [validation notes](docs/VALIDATION.md) and [spikes](docs/SPIKES.md) are in Spanish.
+
+## Build from source
+
+You need Homebrew, the Android SDK and Xcode:
 
 ```bash
 cd vm && ./install.sh && cd ..
@@ -44,31 +90,15 @@ bash scripts/build.sh
 dist/terminal-googlebook up
 ```
 
-`VERSION=x.y.z BUILD_NUMBER=N bash scripts/release.sh` arma el paquete del release en `dist/releases/`.
+`VERSION=x.y.z BUILD_NUMBER=N bash scripts/release.sh` builds the release package in `dist/releases/`.
 
-## Darle su máquina a un agente y verlo en vivo
+## Credits
 
-Prepárala una vez:
+This project is built on two MIT projects:
 
-```bash
-terminal-googlebook setup      # solo la primera vez: unos 9 GB, con barra de progreso y reporte de tiempo
-terminal-googlebook connect    # le da esta computadora a Claude Code
-```
+- [terminal-mac](https://github.com/govijr/terminal-mac) by Govijr: the original project, which runs all of macOS in your terminal. The CLI, MCP server and viewer come from it.
+- [gbos-vm](https://github.com/skylartaylor/gbos-vm) by Skylar Taylor: Googlebook OS in a VM on a Mac, with GPU acceleration and the pointer helper. `vm/` is gbos-vm.
 
-Después, en cualquier conversación nueva de Claude Code, dile "abre tu computadora", en el idioma que quieras, o escribe `/googlebook`. También la usa si le pides una tarea que requiere navegar por un sitio, como buscar boletos.
+## License
 
-Claude la enciende y abre una ventana de Ghostty, Kitty o iTerm2 para que lo veas en vivo. Necesitas tener una de esas terminales. Con iTerm2, macOS pide permiso de Automatización la primera vez. La primera vez que Claude use la computadora sin `/googlebook`, te pide permiso una vez: elige no volver a preguntar.
-
-También puedes abrir la vista tú mismo, incluso antes de darle la tarea, porque espera a que la VM encienda:
-
-```bash
-terminal-googlebook view
-```
-
-Ves la pantalla, el puntero del agente con un anillo en cada click, y su última acción en el pie. También puedes usar la VM tú mismo. `Ctrl+]` cierra el viewer y deja la VM encendida; `terminal-googlebook stop` la apaga.
-
-Para agentes: [docs/AGENT.md](docs/AGENT.md).
-
-No sirve para cuentas ni datos sensibles: la VM no tiene hardware seguro y, salvo con `--offline`, puede alcanzar servicios del host y la LAN. Nada de Google se redistribuye: la imagen se descarga y verifica en tu máquina.
-
-Licencia MIT, salvo `vm/patches/cocoaspice-viewer.patch` (Apache-2.0). El paquete del release incluye binarios de terceros con otras licencias, GPL entre ellas: ver [THIRD_PARTY.md](THIRD_PARTY.md).
+MIT, except `vm/patches/cocoaspice-viewer.patch` (Apache-2.0). The release package includes third-party binaries under other licenses, including GPL: see [THIRD_PARTY.md](THIRD_PARTY.md). Nothing from Google is redistributed: the image is downloaded and verified on your machine.
