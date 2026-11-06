@@ -1,6 +1,6 @@
 # Using terminal-googlebook
 
-`terminal-googlebook mcp [NAME]` is a stdio Model Context Protocol server with computer-use tools for the guest: `start`, `screenshot`, `click`, `move`, `drag`, `scroll`, `type`, `key`, `home`, `back`, `recents`, `open_url` and `status`. Coordinates are pixels in the latest `screenshot`. Action tools accept `screenshot: true` to return a fresh screenshot with the result.
+`terminal-googlebook mcp [NAME]` is a stdio Model Context Protocol server with computer-use tools for the guest: `start`, `stop`, `screenshot`, `click`, `move`, `drag`, `scroll`, `type`, `key`, `home`, `back`, `recents`, `open_url` and `status`. Coordinates are pixels in the latest `screenshot`. Action tools accept `screenshot: true` to return a fresh screenshot with the result.
 
 ```bash
 claude mcp add terminal-googlebook -- /absolute/path/to/terminal-googlebook mcp

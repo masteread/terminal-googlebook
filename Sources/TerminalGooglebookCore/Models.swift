@@ -6,6 +6,20 @@ public struct Failure: LocalizedError {
     public var errorDescription: String? { message }
 }
 
+/// Cuándo se apaga sola una VM que nadie está usando.
+public enum IdlePolicy {
+    public static let defaultMinutes = 15
+
+    /// `TERMINAL_GOOGLEBOOK_IDLE_MINUTES` cambia el límite; 0 lo desactiva. Un valor inválido deja el predeterminado.
+    public static func minutes(_ environment: [String: String]) -> Int? {
+        let minutes = environment["TERMINAL_GOOGLEBOOK_IDLE_MINUTES"].flatMap { Int($0) }.flatMap { $0 >= 0 ? $0 : nil } ?? defaultMinutes
+        return minutes == 0 ? nil : minutes
+    }
+
+    /// Consultar el estado no es usar la VM: un sondeo no debe mantenerla encendida para siempre.
+    public static func countsAsActivity(_ action: String) -> Bool { action != "status" }
+}
+
 public struct Arguments {
     public var positionals: [String] = []
     public var options: [String: String] = [:]

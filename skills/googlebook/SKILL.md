@@ -12,7 +12,7 @@ When the user says "your computer", they mean this one, not their Mac. If they o
 
 ## Prefer the MCP tools
 
-If tools named `start`, `screenshot`, `click`, `move`, `drag`, `scroll`, `type`, `key`, `home`, `back`, `recents`, `open_url` and `status` from the `terminal-googlebook` MCP server are available, use them in an observe → act → verify loop:
+If tools named `start`, `stop`, `screenshot`, `click`, `move`, `drag`, `scroll`, `type`, `key`, `home`, `back`, `recents`, `open_url` and `status` from the `terminal-googlebook` MCP server are available, use them in an observe → act → verify loop:
 
 1. `start`: turns on the VM, or does nothing if it is on, and opens a terminal window so the user can watch you live. Tell them what it reports. If it says setup is missing, stopped or running, follow what it says and tell the user. Setup downloads about 9 GB and usually takes 30 to 60 minutes.
 2. If `userPicker` is `true`, take a `screenshot` and `click` **User**. There is no password.
@@ -20,6 +20,10 @@ If tools named `start`, `screenshot`, `click`, `move`, `drag`, `scroll`, `type`,
 4. `screenshot`: every x/y you pass to other tools is a pixel in this image (top-left origin).
 5. Act with `click` (`clicks: 2` double-clicks, `button: "right"`), `type` (literal text) or `key` (`enter`, `esc`, `tab`, `ctrl+t`, `ctrl+l`, arrows, `meta` opens the launcher, `alt+tab` switches windows), `scroll` (at `x`,`y`; negative `dy` scrolls down), `drag` (`x`,`y` to `toX`,`toY`), `move` (hover), and `home`, `back`, `recents` (Android's system buttons).
 6. Look again: pass `screenshot: true` to an action, or call `screenshot`. A tool reporting "Sent" only means the input was delivered, so confirm the effect before the next step.
+
+7. `stop`: when you finish a task, report your results and then shut it down. This closes the user's live view. Leave it on if they asked you to, are still looking at it, or only asked you to open it and you're waiting for instructions.
+
+With no agent or viewer input for 15 minutes, the VM shuts itself down cleanly. If it's off when you need it, call `start` again. Open tabs may be lost, but the VM's disk is kept.
 
 Click a field before typing into it, and give a just-opened window a moment to take focus: keys sent too early can be lost or reordered.
 
@@ -47,6 +51,7 @@ terminal-googlebook action NAME home                   # or back, recents
 terminal-googlebook action NAME type 'literal text'
 terminal-googlebook action NAME key ctrl+t
 terminal-googlebook action NAME open_url https://example.com
+terminal-googlebook stop NAME                          # when you finish
 ```
 
 ## When to stop and ask the user

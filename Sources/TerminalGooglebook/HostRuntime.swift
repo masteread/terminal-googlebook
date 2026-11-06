@@ -189,6 +189,8 @@ final class HostRuntime {
     private var qmp: QMP?
     private var bootCompleted = false
     private var stopping = false
+    private var lastActivity = Date()
+    private let idleMinutes = IdlePolicy.minutes(ProcessInfo.processInfo.environment)
 
     init(machine: Machine, directory: URL, assets: Assets) throws {
         self.machine = machine; self.directory = directory; self.assets = assets
@@ -265,8 +267,13 @@ final class HostRuntime {
         while true {
             watchBoot()
             for request in try mailbox.requests() {
+                if IdlePolicy.countsAsActivity(request.action) { lastActivity = Date() }
                 do { try mailbox.respond(Reply(id: request.id, values: try await handle(request))) }
                 catch { try? mailbox.respond(Reply(id: request.id, error: error.localizedDescription)) }
+            }
+            if let idleMinutes, !stopping, Date().timeIntervalSince(lastActivity) >= Double(idleMinutes) * 60 {
+                stderr("No activity for \(idleMinutes) minutes: shutting down.")
+                stop(force: false)
             }
             Self.waitBriefly(arrival)
         }

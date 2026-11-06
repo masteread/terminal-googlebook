@@ -16,7 +16,7 @@ final class AgentServer {
 
     static let instructions = """
     Controls your own computer: a separate virtual Googlebook, not the user's desktop. Call `start` first: it \
-    opens a live view for the user, and says what to tell them. If userPicker is true, take a screenshot and click User (there is no password). For any web task \
+    opens a live view for the user, and says what to tell them. Call `stop` when you finish a task. If userPicker is true, take a screenshot and click User (there is no password). For any web task \
     start with `open_url`. Every x/y is a pixel in the latest screenshot (top-left origin). Take \
     another screenshot after actions to check the result. Never add a Google account to this VM.
     """
@@ -28,6 +28,8 @@ final class AgentServer {
     private static let after: [String: Any] = ["type": "boolean", "description": "Also return a screenshot taken shortly after the action."]
     static let tools: [[String: Any]] = [
         ["name": "start", "description": "Turn on your computer, the virtual Googlebook, and wait until it is ready, about a minute. Opens a terminal window on the user's Mac so they can watch you live, unless one is already open. Does nothing else if it is already on. If setup is missing or running, it says so and what to do.",
+         "inputSchema": schema([:])],
+        ["name": "stop", "description": "Shut your computer down cleanly when you finish a task, after reporting your results. This closes the user's live view. Skip it if they asked to keep it on or are still looking at it. Unused, it also shuts itself down.",
          "inputSchema": schema([:])],
         ["name": "screenshot", "description": "Capture the virtual Googlebook's screen. Returns the image and a local PNG path. Coordinates for other tools are pixels in this image.",
          "inputSchema": schema([:]), "annotations": ["readOnlyHint": true]],
@@ -92,6 +94,17 @@ final class AgentServer {
         var requests: [Request] = []
         switch tool {
         case "start": return try await startMachine()
+        case "stop":
+            let process = Process()
+            process.executableURL = executable
+            process.arguments = ["stop", name]
+            let output = Pipe()
+            process.standardOutput = output; process.standardError = output; process.standardInput = FileHandle.nullDevice
+            try process.run()
+            let text = await Task.detached { String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self) }.value
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { throw Failure(text) }
+            return [["type": "text", "text": "Your computer is off. Call `start` to use it again."]]
         case "screenshot": return try await screenshot()
         case "status":
             let assets = Assets(store: store, executable: executable)
@@ -150,7 +163,8 @@ final class AgentServer {
         let text = await Task.detached { String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self) }.value
         process.waitUntilExit()
         guard process.terminationStatus == 0 else { throw Failure(text) }
-        return [["type": "text", "text": "\(text)\n\(window)"]]
+        let idle = IdlePolicy.minutes(ProcessInfo.processInfo.environment).map { " With no activity for \($0) minutes it shuts itself down; call `start` again if that happens." } ?? ""
+        return [["type": "text", "text": "\(text)\n\(window)\(idle)"]]
     }
 
     /// A point-sized screenshot, so image pixels are the coordinates the other tools take.

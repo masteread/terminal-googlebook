@@ -45,7 +45,7 @@ The first time:
 - Without `/googlebook`, Claude Code asks for permission once. Choose not to be asked again.
 - With iTerm2, macOS may ask for Automation permission.
 
-While the skill is active, Claude clicks and types in the VM without asking each time. It never controls your Mac.
+While the skill is active, Claude clicks and types in the VM without asking each time. It never controls your Mac. When it finishes a task, it reports its results and shuts the VM down, unless you ask it to keep the VM on.
 
 For other MCP clients and for agents installing this themselves, see [docs/AGENT.md](docs/AGENT.md).
 
@@ -59,7 +59,7 @@ terminal-googlebook action screenshot --output /tmp/guest.png
 terminal-googlebook stop     # shuts the VM down
 ```
 
-`Ctrl+]` closes the viewer and leaves the VM running. Only one VM can run at a time on each Mac. Run `terminal-googlebook help` for every command.
+`Ctrl+]` closes the viewer and leaves the VM running. To save memory, Android shuts down cleanly after 15 minutes with no agent or viewer input, even with the viewer open. Set `TERMINAL_GOOGLEBOOK_IDLE_MINUTES` before starting the VM to change the limit, or to `0` to turn this off. Only one VM can run at a time on each Mac. Run `terminal-googlebook help` for every command.
 
 ## Safety
 
