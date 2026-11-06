@@ -22,6 +22,15 @@ final class CoreTests: XCTestCase {
     func testEveryPrintableASCIICharacterHasKeys() {
         for value in 32...126 { XCTAssertNotNil(GuestInput.keys(for: Character(UnicodeScalar(UInt8(value)))), "\(value)") }
     }
+    func testIdlePolicy() {
+        XCTAssertEqual(IdlePolicy.minutes([:]), 15)
+        XCTAssertEqual(IdlePolicy.minutes(["TERMINAL_GOOGLEBOOK_IDLE_MINUTES": "30"]), 30)
+        XCTAssertNil(IdlePolicy.minutes(["TERMINAL_GOOGLEBOOK_IDLE_MINUTES": "0"]))
+        for bad in ["-1", "soon", ""] { XCTAssertEqual(IdlePolicy.minutes(["TERMINAL_GOOGLEBOOK_IDLE_MINUTES": bad]), 15, bad) }
+        XCTAssertFalse(IdlePolicy.countsAsActivity("status"))
+        for action in ["screenshot", "click", "type", "open_url"] { XCTAssertTrue(IdlePolicy.countsAsActivity(action), action) }
+    }
+
     func testOnlyWebURLsCanBeOpened() throws {
         XCTAssertEqual(try GuestInput.validatedURL("https://example.com/a?b=1"), "https://example.com/a?b=1")
         for bad in ["file:///etc/passwd", "javascript:alert(1)", "example.com", "https://a b.com", "https://a.com\nx", "chrome://settings", "https://ñ.com"] {
